@@ -1,0 +1,117 @@
+/* -------------------------------------------------------------------------- */
+/* BASE TAILWIND & FONT IMPORTS */
+/* -------------------------------------------------------------------------- */
+/* ⚠️ The Google Font import must come FIRST, followed by Tailwind import */
+@import url("https://fonts.googleapis.com/css2?family=Poppins:wght@400;500;600;700;800;900&display=swap");
+
+/* ✅ Tailwind v4 uses a single import (do not use @tailwind base/components/utilities) */
+@import "tailwindcss";
+
+/* -------------------------------------------------------------------------- */
+/* GLOBAL CSS RESET & FONT SETUP */
+/* -------------------------------------------------------------------------- */
+
+:root {
+  font-family: "Poppins", sans-serif;
+  line-height: 1.5;
+  font-weight: 400;
+  color-scheme: light dark;
+}
+
+body {
+  margin: 0;
+  min-width: 100%;
+  min-height: 100vh;
+  background-color: #ffffff;
+  color: var(--color-text-dark);
+}
+
+/* -------------------------------------------------------------------------- */
+/* CUSTOM COLORS & VARIABLES */
+/* -------------------------------------------------------------------------- */
+
+:root {
+  --color-primary: #38a169; /* Primary green */
+  --color-secondary: #2f855a; /* Darker accent green */
+  --color-text-dark: #1a202c;
+  --color-text-light: #4a5568;
+  --color-background-light: #f7fafc;
+  --color-background-faint-green: #e9f7ee;
+}
+
+/* -------------------------------------------------------------------------- */
+/* CUSTOM UTILITY CLASSES */
+/* -------------------------------------------------------------------------- */
+
+/* Gradient Text */
+.text-gradient {
+  background: linear-gradient(90deg, #38a169, #48bb78);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+}
+
+/* Reusable Green Button Style */
+.btn-primary {
+  background-color: var(--color-primary);
+  color: white;
+  font-weight: 600;
+  border-radius: 8px;
+  padding: 0.5rem 1.25rem;
+  transition: background-color 0.3s ease;
+}
+
+.btn-primary:hover {
+  background-color: var(--color-secondary);
+}
+
+/* Cards (for dashboards or produce items) */
+.card {
+  background-color: white;
+  border-radius: 12px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.05);
+  padding: 1rem;
+  transition: transform 0.2s ease, box-shadow 0.2s ease;
+}
+
+.card:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+}
+
+/* Centered container (for forms, hero, etc.) */
+.container-centered {
+  max-width: 600px;
+  margin: 0 auto;
+  padding: 2rem;
+}
+
+/* Smooth transitions for theme toggle */
+* {
+  transition: color 0.2s ease, background-color 0.2s ease;
+}
+
+/* -------------------------------------------------------------------------- */
+/* INPUT FIELD STYLING (Tailwind v4 way — no @apply needed) */
+/* -------------------------------------------------------------------------- */
+
+input[type="text"],
+input[type="email"],
+input[type="password"],
+input[type="number"],
+input[type="date"],
+select,
+textarea {
+  border: 1px solid #d1d5db; /* border-gray-300 */
+  border-radius: 0.5rem; /* rounded-lg */
+  padding: 0.5rem 0.75rem; /* px-3 py-2 */
+  width: 100%;
+  outline: none;
+  transition: box-shadow 0.2s ease, border-color 0.2s ease;
+}
+
+input:focus,
+select:focus,
+textarea:focus {
+  border-color: #38a169; /* focus:ring-green-500 */
+  box-shadow: 0 0 0 2px rgba(56, 161, 105, 0.3);
+}

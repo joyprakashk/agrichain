@@ -1,0 +1,11 @@
+{
+  "type": "module",
+  "scripts": {
+    "test-blockchain": "node test-blockchain.js",
+    "final-test": "node final-test.js",
+    "test-qr": "node test-qr-generation.js"
+  },
+  "dependencies": {
+    "qrcode": "^1.5.4"
+  }
+}
