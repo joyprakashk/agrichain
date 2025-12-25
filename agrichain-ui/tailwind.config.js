@@ -1,16 +1,10 @@
 /** @type {import('tailwindcss').Config} */
 export default {
-  darkMode: "class", // for manual theme toggling
   content: [
     "./index.html",
-    "./src/**/*.{js,ts,jsx,tsx}",
+    "./src/**/*.{js,jsx,ts,tsx}",
+    "./src/pages/admin-panel/src/**/*.{js,jsx,ts,tsx}",
   ],
-  theme: {
-    extend: {
-      fontFamily: {
-        sans: ["Poppins", "sans-serif"],
-      },
-    },
-  },
+  theme: { extend: {} },
   plugins: [],
 };

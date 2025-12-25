@@ -1,6 +1,6 @@
 // src/App.jsx
 import React, { useState, useEffect } from "react";
-import { HashRouter as Router, Routes, Route, Navigate } from "react-router-dom";
+import { HashRouter as Router, Routes, Route, Navigate, useLocation } from "react-router-dom";
 
 // Components / Pages (keep your UI as-is)
 import Navbar from "./components/Navbar";
@@ -28,8 +28,10 @@ import OrderProcessingPage from "./pages/OrderProcessingPage";
 import OrderSuccessPage from "./pages/OrderSuccessPage";
 import QRVerificationPage from "./pages/QRVerificationPage";
 import ProductSuccessPage from "./pages/ProductSuccessPage"; // optional if you use a separate success page
+import AdminDashboard from "./pages/AdminDashboard";
 
 const App = () => {
+  const location = typeof window !== "undefined" ? window.location : null;
   const [theme, setTheme] = useState(() => {
     // Initialize theme from localStorage or default to "light"
     return localStorage.getItem("theme") || "light";
@@ -70,7 +72,10 @@ const App = () => {
   return (
     <Router>
       <div className="min-h-screen flex flex-col bg-gray-50 dark:bg-gray-900 text-gray-800 dark:text-gray-100 transition-all">
-        <Navbar theme={theme} setTheme={setTheme} />
+        {/* Hide main site navbar on admin pages */}
+        {!(typeof window !== "undefined" && window.location.hash.includes("#/admin")) && (
+          <Navbar theme={theme} setTheme={setTheme} />
+        )}
 
         <div className="flex-grow">
           <Routes>
@@ -115,6 +120,9 @@ const App = () => {
             <Route path="/order-processing" element={<OrderProcessingPage />} />
             <Route path="/order-success" element={<OrderSuccessPage />} />
             <Route path="/verify/:traceId" element={<QRVerificationPage />} />
+
+            {/* Admin Dashboard routes */}
+            <Route path="/admin/*" element={<AdminDashboard />} />
 
             <Route path="*" element={<Navigate to="/buyproduce" replace />} />
           </Routes>
