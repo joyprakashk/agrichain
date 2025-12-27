@@ -1,6 +1,7 @@
 import React, { useState } from "react";
 import axios from "axios";
 import { useNavigate } from "react-router-dom";
+import LocationPicker from "../components/LocationPicker";
 
 const IMGBB_API_KEY = "61789d43e9480609db431f5ee47bc7b3"; // 🔑 Your ImgBB key
 
@@ -13,6 +14,7 @@ const RegisterProduce = () => {
   const [image, setImage] = useState(null);
   const [price, setPrice] = useState("");
   const [category, setCategory] = useState("");
+  const [sourceLocation, setSourceLocation] = useState(null);
   const [loading, setLoading] = useState(false);
 
   const handleImageChange = (e) => {
@@ -69,6 +71,7 @@ const RegisterProduce = () => {
         price,
         category,
         imageUrl,
+        sourceLocation, // ✅ Send source location
       });
 
       if (res.status === 200) {
@@ -80,6 +83,7 @@ const RegisterProduce = () => {
           price,
           category,
           imageUrl,
+          sourceLocation,
         };
         navigate("/register-success", { state: { produceData } });
       }
@@ -90,6 +94,12 @@ const RegisterProduce = () => {
       setLoading(false);
     }
   };
+
+  // Import LocationPicker dynamically or normally if possible. 
+  // Assuming it's in components folder.
+  // Note: Since I am replacing content, I can't add import at top easily without another call.
+  // I will assume I will add import in next step or use a lazy load if I could.
+  // Actually, I should have added the import. I'll simply add the usage here and add import at top in next step.
 
   return (
     <div className="min-h-screen bg-gray-50 dark:bg-gray-800 py-8">
@@ -146,6 +156,19 @@ const RegisterProduce = () => {
                 className="border border-gray-300 dark:border-gray-600 rounded-lg w-full px-4 py-3 focus:ring-2 focus:ring-green-500 focus:border-green-500 dark:bg-gray-600 dark:text-white transition duration-150"
                 required
               />
+            </div>
+
+            {/* Location Picker */}
+            <div>
+              <label className="block mb-2 font-semibold text-gray-700 dark:text-gray-300">
+                Harvest Location
+              </label>
+              {/* We need to import LocationPicker. I will use a placeholder comment here if import is missing */}
+              <div className="h-64 rounded-lg overflow-hidden relative">
+                {/* @ts-ignore */}
+                <LocationPicker onLocationSelect={setSourceLocation} />
+              </div>
+              <p className="text-xs text-gray-500 mt-1">Tap on the map to set harvest location</p>
             </div>
 
             <div>

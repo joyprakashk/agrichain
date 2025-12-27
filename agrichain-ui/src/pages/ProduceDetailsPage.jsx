@@ -87,7 +87,7 @@ const ProduceDetailsPage = () => {
 
         const rawPath = encodedPath;
         const parts = rawPath.split("/").filter(Boolean);
-        
+
         // Try backend API first
         try {
           const response = await fetch('http://localhost:8080/api/market/all-produce');
@@ -95,7 +95,7 @@ const ProduceDetailsPage = () => {
             const result = await response.json();
             const produceId = parts[parts.length - 1];
             const foundProduce = result.allProduce.find(p => p.id === produceId);
-            
+
             if (foundProduce) {
               const final = applyPlaceholders(foundProduce);
               setProduce(final);
@@ -106,7 +106,7 @@ const ProduceDetailsPage = () => {
         } catch (apiError) {
           console.log('API fetch failed, trying Firebase:', apiError);
         }
-        
+
         // Fallback to Firebase
         const docRef = doc(db, ...parts);
         const snap = await getDoc(docRef);
@@ -162,9 +162,10 @@ const ProduceDetailsPage = () => {
       subtotal: quantity * produce.price,
       deliveryFee: 50,
       totalAmount: (quantity * produce.price) + 50,
-      farmerEmail: produce.farmerEmail
+      farmerEmail: produce.farmerEmail,
+      sourceLocation: produce.sourceLocation // Pass farmer location
     };
-    
+
     navigate('/checkout', { state: { order: orderData } });
   };
 
@@ -243,9 +244,9 @@ const ProduceDetailsPage = () => {
                 <span className="bg-black text-white text-xs px-2 py-1 rounded">Organic</span>
                 <span className="bg-green-100 text-green-800 text-xs px-2 py-1 rounded font-medium">A+</span>
               </div>
-              
+
               <h1 className="text-3xl font-bold text-gray-800 mb-2">{produce.produceName}</h1>
-              
+
               <div className="flex items-center gap-4 mb-4">
                 <div className="flex items-center">
                   <Star className="w-4 h-4 text-yellow-400 fill-current" />
@@ -271,7 +272,7 @@ const ProduceDetailsPage = () => {
 
               <div className="mb-6">
                 <div className="text-3xl font-bold text-green-600 mb-2">₹{produce.price}/kg</div>
-                
+
                 <div className="mb-4">
                   <label className="block text-sm font-medium text-gray-700 mb-2">Quantity (kg)</label>
                   <div className="flex items-center space-x-3">
@@ -317,7 +318,7 @@ const ProduceDetailsPage = () => {
         {/* All 4 Sections in One Page */}
         <div className="space-y-6">
           {/* Farmer Information & Nutrition */}
-          <FarmerInfo 
+          <FarmerInfo
             farmer={{
               name: produce.farmerName,
               location: produce.farmLocation,
@@ -328,8 +329,8 @@ const ProduceDetailsPage = () => {
           />
 
           {/* Supply Chain Journey */}
-          <SupplyChainJourney 
-            chain={produce.supplyChain} 
+          <SupplyChainJourney
+            chain={produce.supplyChain}
             farmer={{
               name: produce.farmerName,
               location: produce.farmLocation

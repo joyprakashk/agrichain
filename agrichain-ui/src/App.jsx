@@ -29,6 +29,7 @@ import OrderSuccessPage from "./pages/OrderSuccessPage";
 import QRVerificationPage from "./pages/QRVerificationPage";
 import ProductSuccessPage from "./pages/ProductSuccessPage"; // optional if you use a separate success page
 import AdminDashboard from "./pages/AdminDashboard";
+import TrackingPage from "./pages/TrackingPage";
 
 const App = () => {
   const location = typeof window !== "undefined" ? window.location : null;
@@ -116,6 +117,8 @@ const App = () => {
               path="/checkout"
               element={<CheckoutPage onBack={handleBack} onSuccess={handleOrderSuccess} />}
             />
+
+            <Route path="/tracking/:orderId" element={<TrackingPage />} />
 
             <Route path="/order-processing" element={<OrderProcessingPage />} />
             <Route path="/order-success" element={<OrderSuccessPage />} />

@@ -75,7 +75,7 @@ const CheckoutPage = ({ onBack, onSuccess }) => {
     try {
       const consumer = JSON.parse(localStorage.getItem('consumerInfo') || '{}');
       const consumerEmail = consumer.email || consumer.phoneNumber;
-      
+
       if (!consumerEmail) {
         alert('Please login to place order');
         return;
@@ -89,7 +89,9 @@ const CheckoutPage = ({ onBack, onSuccess }) => {
         farmerEmail: order.farmerEmail || 'unknown',
         orderData: {
           deliveryAddress,
-          paymentMethod: selectedPayment
+          paymentMethod: selectedPayment,
+          source: order.sourceLocation || { lat: 12.9716, lng: 77.5946 }, // From Produce (Farmer)
+          destination: consumer.coordinates || { lat: 13.0827, lng: 80.2707 } // From Consumer Profile
         }
       };
 
@@ -100,7 +102,7 @@ const CheckoutPage = ({ onBack, onSuccess }) => {
       });
 
       const result = await response.json();
-      
+
       if (response.ok) {
         // Fetch QR code for the order
         let qrCodeData = null;
@@ -122,12 +124,14 @@ const CheckoutPage = ({ onBack, onSuccess }) => {
           orderId: result.orderId,
           traceId: result.traceId || 'TXN_' + Date.now().toString(36).toUpperCase(),
           qrCode: qrCodeData || result.qrCode,
-          blockchainEnabled: result.blockchainEnabled || true
+          blockchainEnabled: result.blockchainEnabled || true,
+          source: orderPayload.orderData.source,
+          destination: orderPayload.orderData.destination
         };
 
         // Store order details for success page
         localStorage.setItem('lastOrderDetails', JSON.stringify(finalOrder));
-        
+
         // Navigate to processing page
         window.location.hash = '#/order-processing';
       } else {
@@ -142,7 +146,20 @@ const CheckoutPage = ({ onBack, onSuccess }) => {
   };
 
   const handleTrackOrder = () => {
-    alert(`Tracking Order ${orderNumber}...`);
+    // Get last order to find ID
+    const lastOrder = JSON.parse(localStorage.getItem('lastOrderDetails'));
+    if (lastOrder && lastOrder.orderId) {
+      navigate(`/tracking/${lastOrder.orderId}`, {
+        state: {
+          orderData: {
+            source: lastOrder.source,
+            destination: lastOrder.destination
+          }
+        }
+      });
+    } else {
+      alert("Order details missing. Cannot track.");
+    }
   };
 
   const handleContinueShopping = () => {
@@ -206,8 +223,8 @@ const CheckoutPage = ({ onBack, onSuccess }) => {
             <div className="mb-8 text-center">
               <h3 className="text-lg font-semibold mb-4">Blockchain QR Code</h3>
               <div className="w-32 h-32 mx-auto mb-4 bg-white rounded-lg border border-gray-300 flex items-center justify-center">
-                <img 
-                  src={order.qrCode} 
+                <img
+                  src={order.qrCode}
                   alt="Blockchain QR Code"
                   className="w-full h-full object-contain rounded-lg"
                 />
@@ -305,11 +322,10 @@ const CheckoutPage = ({ onBack, onSuccess }) => {
             {/* Cash on Delivery Option */}
             <div
               onClick={() => setSelectedPayment('Cash on Delivery')}
-              className={`flex items-center p-4 rounded-lg cursor-pointer border ${
-                selectedPayment === 'Cash on Delivery' 
-                  ? 'border-green-400 bg-green-50 dark:bg-green-900/30 dark:border-green-600' 
+              className={`flex items-center p-4 rounded-lg cursor-pointer border ${selectedPayment === 'Cash on Delivery'
+                  ? 'border-green-400 bg-green-50 dark:bg-green-900/30 dark:border-green-600'
                   : 'border-gray-200 dark:border-gray-600 bg-white dark:bg-gray-600'
-              }`}
+                }`}
             >
               <div className="flex items-center gap-3 flex-1">
                 <div className="w-6 h-6 bg-green-100 dark:bg-green-800 rounded flex items-center justify-center">
@@ -336,8 +352,8 @@ const CheckoutPage = ({ onBack, onSuccess }) => {
         </div>
 
         <form onSubmit={handlePlaceOrder} className="w-full">
-          <button 
-            type="submit" 
+          <button
+            type="submit"
             disabled={loading}
             className="w-full py-4 bg-green-600 dark:bg-green-700 text-white font-bold text-lg rounded-lg hover:bg-green-700 dark:hover:bg-green-600 transition shadow-lg disabled:opacity-50 flex items-center justify-center"
           >

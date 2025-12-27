@@ -12,6 +12,8 @@ import { fileURLToPath } from "url";
 import { ethers } from "ethers";
 import BlockchainService from "./blockchain.js";
 import QRCode from "qrcode";
+import { createServer } from "http";
+import { Server } from "socket.io";
 
 dotenv.config();
 
@@ -26,17 +28,17 @@ const initBlockchain = async () => {
       console.log("- Contract:", process.env.CONTRACT_ADDRESS);
       console.log("- RPC URL:", process.env.SEPOLIA_RPC_URL);
       console.log("- Private Key:", process.env.BLOCKCHAIN_PRIVATE_KEY ? "[SET]" : "[MISSING]");
-      
+
       blockchainService = new BlockchainService();
-      
+
       // Test blockchain connection
       const provider = blockchainService.provider;
       const network = await provider.getNetwork();
       console.log("🌐 Connected to network:", network.name, "(chainId:", network.chainId, ")");
-      
+
       const balance = await provider.getBalance(blockchainService.wallet.address);
       console.log("💰 Wallet balance:", ethers.formatEther(balance), "ETH");
-      
+
       blockchainInitialized = true;
       console.log("✅ Blockchain service initialized successfully");
     } else {
@@ -208,7 +210,7 @@ app.post("/api/verifyToken", async (req, res) => {
 // 🌾 Register Produce
 app.post("/api/farmer/register-produce", async (req, res) => {
   try {
-    const { email, produceName, quantity, harvestDate, imageUrl, price, category } =
+    const { email, produceName, quantity, harvestDate, imageUrl, price, category, sourceLocation } =
       req.body;
     if (!email || !produceName || !quantity || !harvestDate)
       return res.status(400).json({ message: "Missing fields" });
@@ -221,13 +223,13 @@ app.post("/api/farmer/register-produce", async (req, res) => {
     // Generate blockchain trace and QR code for produce
     let traceId = null;
     let qrCode = null;
-    
+
     if (blockchainService && blockchainInitialized) {
       try {
         traceId = await blockchainService.registerOrder(
           produceName,
           parseInt(quantity),
-          JSON.stringify({ farmer: email, harvestDate, price, category })
+          JSON.stringify({ farmer: email, harvestDate, price, category, sourceLocation })
         );
         qrCode = await blockchainService.generateQRCode(traceId);
         console.log("✅ Blockchain trace created for produce:", traceId);
@@ -243,6 +245,7 @@ app.post("/api/farmer/register-produce", async (req, res) => {
       price: price || "",
       category: category || "Uncategorized",
       imageUrl: imageUrl || "",
+      sourceLocation: sourceLocation || null,
       status: "registered",
       traceId: traceId ? traceId.toString() : null,
       qrCode: qrCode || null,
@@ -255,7 +258,7 @@ app.post("/api/farmer/register-produce", async (req, res) => {
       "dashboard.totalBatches": updatedTotal,
     });
 
-    res.status(200).json({ 
+    res.status(200).json({
       message: "Produce registered successfully",
       produceId: produceDoc.id,
       traceId: traceId ? traceId.toString() : null,
@@ -308,7 +311,7 @@ app.post("/api/farmer/dashboard", async (req, res) => {
 // ============================
 app.post("/api/consumer/register", async (req, res) => {
   try {
-    const { phoneNumber, email, fullName, userType, location, language } = req.body;
+    const { phoneNumber, email, fullName, userType, location, coordinates, language } = req.body;
     if (!phoneNumber && !email)
       return res.status(400).json({ message: "Phone or Email required" });
 
@@ -327,7 +330,8 @@ app.post("/api/consumer/register", async (req, res) => {
     const consumerData = {
       fullName: fullName || "",
       userType: userType || "",
-      location: location || "",
+      location: location || "", // check if this is text
+      coordinates: coordinates || null, // { lat: ..., lng: ... }
       language: language || "",
       phoneNumber: phoneNumber || "",
       email: email || "",
@@ -376,7 +380,7 @@ app.post("/api/consumer/register", async (req, res) => {
 app.post("/api/orders/place", async (req, res) => {
   try {
     const { consumerEmail, productName, quantity, totalAmount, farmerEmail, orderData } = req.body;
-    
+
     if (!consumerEmail || !productName || !quantity) {
       return res.status(400).json({ message: "Missing required fields" });
     }
@@ -477,20 +481,20 @@ app.get("/api/orders/:orderId/qr", async (req, res) => {
 app.get("/api/trace/:traceId", async (req, res) => {
   try {
     const { traceId } = req.params;
-    
+
     // First try to find the order in Firebase to get real data
     try {
       const consumersSnap = await db.collection("consumers").get();
       let orderFound = null;
       let farmerData = null;
-      
+
       for (const consumerDoc of consumersSnap.docs) {
         const ordersSnap = await db.collection("consumers").doc(consumerDoc.id).collection("orders").where("traceId", "==", traceId).get();
-        
+
         if (!ordersSnap.empty) {
           const orderDoc = ordersSnap.docs[0];
           orderFound = orderDoc.data();
-          
+
           // Get farmer data
           if (orderFound.farmerEmail) {
             const farmerDoc = await db.collection("farmers").doc(orderFound.farmerEmail).get();
@@ -501,7 +505,7 @@ app.get("/api/trace/:traceId", async (req, res) => {
           break;
         }
       }
-      
+
       if (orderFound) {
         return res.status(200).json({
           traceId: traceId,
@@ -516,14 +520,14 @@ app.get("/api/trace/:traceId", async (req, res) => {
     } catch (firebaseError) {
       console.error("⚠️ Firebase query failed:", firebaseError);
     }
-    
+
     // Fallback to blockchain if Firebase fails
     if (!blockchainService || !blockchainInitialized) {
       return res.status(503).json({ message: "Blockchain service unavailable" });
     }
 
     const orderDetails = await blockchainService.getOrderDetails(traceId);
-    
+
     res.status(200).json({
       traceId: orderDetails.traceId.toString(),
       farmer: orderDetails.farmer,
@@ -627,9 +631,9 @@ app.post("/api/test/create-trace", async (req, res) => {
       5,
       JSON.stringify({ test: true })
     );
-    
+
     const qrCode = await blockchainService.generateQRCode(traceId);
-    
+
     res.status(200).json({
       message: "Test trace created",
       traceId: traceId.toString(),
@@ -653,7 +657,7 @@ app.get("/api/test/qr", async (req, res) => {
         light: '#FFFFFF'
       }
     });
-    
+
     res.status(200).json({
       message: "Test QR generated",
       traceId: testHash,
@@ -665,10 +669,66 @@ app.get("/api/test/qr", async (req, res) => {
   }
 });
 
+
+// ============================
+// 🔌 SOCKET.IO REAL-TIME TRACKING
+// ============================
+const httpServer = createServer(app);
+const io = new Server(httpServer, {
+  cors: {
+    origin: "*",
+    methods: ["GET", "POST"]
+  }
+});
+
+const activeSimulations = new Map();
+
+io.on("connection", (socket) => {
+  console.log(`⚡ Client connected to socket: ${socket.id}`);
+
+  socket.on("join_tracking", (orderId) => {
+    socket.join(orderId);
+    console.log(`Socket ${socket.id} joined room: ${orderId}`);
+  });
+
+  socket.on("start_simulation", ({ orderId, source, destination }) => {
+    if (!source || !destination) return;
+    if (activeSimulations.has(orderId)) return;
+
+    console.log(`🚀 Starting simulation for Order: ${orderId}`);
+
+    let step = 0;
+    const totalSteps = 100;
+
+    const interval = setInterval(() => {
+      step++;
+      const progress = step / totalSteps;
+      const lat = source.lat + (destination.lat - source.lat) * progress;
+      const lng = source.lng + (destination.lng - source.lng) * progress;
+
+      io.to(orderId).emit("location_update", {
+        position: { lat, lng },
+        status: step < totalSteps ? "In Transit 🚚" : "Delivered ✅"
+      });
+
+      if (step >= totalSteps) {
+        clearInterval(interval);
+        activeSimulations.delete(orderId);
+      }
+    }, 500); // Faster simulation (0.5s updates)
+
+    activeSimulations.set(orderId, interval);
+  });
+
+  socket.on("disconnect", () => {
+    console.log(`Socket disconnected: ${socket.id}`);
+  });
+});
+
 // ============================
 // 🚀 Start Server
 // ============================
 const PORT = process.env.PORT || 8080;
-app.listen(PORT, () =>
+httpServer.listen(PORT, () =>
   console.log(`🚀 Server running on http://localhost:${PORT}`)
 );

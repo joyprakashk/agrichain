@@ -14,6 +14,8 @@ import {
   ArrowLeft,
 } from "lucide-react";
 
+import LocationPicker from "../components/LocationPicker";
+
 // -----------------------------------------------
 // Reusable UI Components (No UI changes made here)
 // -----------------------------------------------
@@ -21,11 +23,10 @@ import {
 const LoginMethodButton = ({ method, icon: Icon, currentMethod, setMethod }) => (
   <button
     onClick={() => setMethod(method)}
-    className={`flex flex-col items-center p-3 rounded-lg w-1/2 transition-colors duration-200 border-2 ${
-      currentMethod === method
-        ? "bg-black dark:bg-gray-900 border-black dark:border-white text-white shadow-lg"
-        : "bg-gray-100 dark:bg-gray-700 border-gray-300 dark:border-gray-700 text-gray-600 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-600"
-    }`}
+    className={`flex flex-col items-center p-3 rounded-lg w-1/2 transition-colors duration-200 border-2 ${currentMethod === method
+      ? "bg-black dark:bg-gray-900 border-black dark:border-white text-white shadow-lg"
+      : "bg-gray-100 dark:bg-gray-700 border-gray-300 dark:border-gray-700 text-gray-600 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-600"
+      }`}
   >
     <Icon className="w-5 h-5 mb-1" />
     <span className="text-xs font-semibold">{method}</span>
@@ -53,11 +54,10 @@ const InputField = ({
       value={value}
       onChange={onChange}
       disabled={disabled}
-      className={`w-full py-3 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-green-500 focus:border-green-500 transition duration-150 text-gray-800 dark:bg-gray-700 dark:text-white dark:placeholder-gray-400 ${
-        center
-          ? "text-center text-xl font-bold tracking-widest px-4"
-          : "pl-12 pr-4"
-      }`}
+      className={`w-full py-3 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-green-500 focus:border-green-500 transition duration-150 text-gray-800 dark:bg-gray-700 dark:text-white dark:placeholder-gray-400 ${center
+        ? "text-center text-xl font-bold tracking-widest px-4"
+        : "pl-12 pr-4"
+        }`}
       maxLength={center ? 6 : undefined}
     />
   </div>
@@ -86,6 +86,7 @@ const ConsumerLoginPage = () => {
   const [fullName, setFullName] = useState("");
   const [userType, setUserType] = useState("");
   const [locationText, setLocationText] = useState("");
+  const [coordinates, setCoordinates] = useState(null); // Added state
   const [language, setLanguage] = useState("");
 
   const [loading, setLoading] = useState(false);
@@ -132,7 +133,7 @@ const ConsumerLoginPage = () => {
       // Try to check if user exists in Firestore
       let userExists = false;
       let userData = null;
-      
+
       try {
         const consumerRef = doc(db, "consumers", phoneKey);
         const snap = await getDoc(consumerRef);
@@ -199,6 +200,7 @@ const ConsumerLoginPage = () => {
         fullName,
         userType,
         location: locationText,
+        coordinates, // Added
         language,
         email,
         phoneNumber: phoneKey,
@@ -299,22 +301,20 @@ const ConsumerLoginPage = () => {
               <button
                 type="button"
                 onClick={() => setIsLogin(true)}
-                className={`px-6 py-2 rounded-lg ${
-                  isLogin
-                    ? "bg-black text-white dark:bg-white dark:text-black"
-                    : "text-gray-500 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-700"
-                }`}
+                className={`px-6 py-2 rounded-lg ${isLogin
+                  ? "bg-black text-white dark:bg-white dark:text-black"
+                  : "text-gray-500 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-700"
+                  }`}
               >
                 Login
               </button>
               <button
                 type="button"
                 onClick={() => setIsLogin(false)}
-                className={`px-6 py-2 rounded-lg ${
-                  !isLogin
-                    ? "bg-black text-white dark:bg-white dark:text-black"
-                    : "text-gray-500 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-700"
-                }`}
+                className={`px-6 py-2 rounded-lg ${!isLogin
+                  ? "bg-black text-white dark:bg-white dark:text-black"
+                  : "text-gray-500 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-700"
+                  }`}
               >
                 Sign Up
               </button>
@@ -438,6 +438,13 @@ const ConsumerLoginPage = () => {
                 onChange={(e) => setLocationText(e.target.value)}
                 className="w-full p-3 mb-4 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-green-500 focus:border-green-500 transition duration-150 text-gray-800 dark:bg-gray-700 dark:text-white placeholder-gray-500 dark:placeholder-gray-400"
               />
+
+              <label className="block text-sm font-semibold text-gray-700 dark:text-gray-300 mb-2">
+                Pin Location on Map
+              </label>
+              <div className="h-48 mb-6 rounded-lg overflow-hidden border border-gray-300 dark:border-gray-600">
+                <LocationPicker onLocationSelect={(pos) => setCoordinates(pos)} />
+              </div>
 
               <label className="block text-sm font-semibold text-gray-700 dark:text-gray-300 mb-2">
                 Preferred Language
