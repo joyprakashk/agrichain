@@ -2,11 +2,11 @@ import { ethers } from "ethers";
 import QRCode from "qrcode";
 
 const CONTRACT_ABI = [
-  "function registerOrder(string memory _productName, uint256 _quantity, string memory _orderData) external",
+  "function registerOrder(string memory _productName, uint256 _quantity, string memory _orderData) external returns (bytes32)",
   "function getOrder(bytes32 _traceId) external view returns (tuple(bytes32 traceId, address farmer, string productName, uint256 quantity, uint256 timestamp, string status, bool exists))",
   "function updateStatus(bytes32 _traceId, string memory _newStatus) external",
   "function orderCount() external view returns (uint256)",
-  "event OrderRegistered(bytes32 indexed traceId, address indexed farmer, string productName, uint256 quantity)"
+  "event OrderRegistered(bytes32 indexed traceId, address indexed farmer, string productName)"
 ];
 
 class BlockchainService {
@@ -20,19 +20,31 @@ class BlockchainService {
     try {
       console.log("🔗 Registering order:", { productName, quantity });
       
-      // Generate trace ID before transaction
-      const traceId = ethers.keccak256(
-        ethers.toUtf8Bytes(`${productName}-${quantity}-${Date.now()}-${Math.random()}`)
-      );
-      
+      // Call the contract function and wait for transaction
       const tx = await this.contract.registerOrder(productName, quantity, orderData);
       console.log("📝 Transaction sent:", tx.hash);
       
       const receipt = await tx.wait();
       console.log("✅ Transaction confirmed:", receipt.hash);
       
-      // Return the generated trace ID
-      return traceId;
+      // Extract trace ID from the OrderRegistered event
+      const orderRegisteredEvent = receipt.logs.find(log => {
+        try {
+          const parsed = this.contract.interface.parseLog(log);
+          return parsed && parsed.name === 'OrderRegistered';
+        } catch {
+          return false;
+        }
+      });
+      
+      if (orderRegisteredEvent) {
+        const parsed = this.contract.interface.parseLog(orderRegisteredEvent);
+        const traceId = parsed.args.traceId;
+        console.log("✅ Blockchain order registered:", traceId);
+        return traceId;
+      }
+      
+      throw new Error("OrderRegistered event not found in transaction receipt");
     } catch (error) {
       console.error("❌ Blockchain registration failed:", error.message);
       throw new Error(`Blockchain registration failed: ${error.message}`);

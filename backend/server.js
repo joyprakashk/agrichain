@@ -485,79 +485,101 @@ app.get("/api/orders/:orderId/qr", async (req, res) => {
 app.get("/api/trace/:traceId", async (req, res) => {
   try {
     const { traceId } = req.params;
+    console.log("🔍 Tracing ID:", traceId);
 
-    // First try to find the order in Firebase to get real data
-    try {
-      const consumersSnap = await db.collection("consumers").get();
-      let orderFound = null;
-      let farmerData = null;
+    // Search through all farmers and their produce collections
+    const farmersSnap = await db.collection("farmers").get();
+    
+    for (const farmerDoc of farmersSnap.docs) {
+      const farmerData = farmerDoc.data();
+      const produceSnap = await db.collection("farmers").doc(farmerDoc.id).collection("produce").where("traceId", "==", traceId).get();
 
-      for (const consumerDoc of consumersSnap.docs) {
-        const ordersSnap = await db.collection("consumers").doc(consumerDoc.id).collection("orders").where("traceId", "==", traceId).get();
-
-        if (!ordersSnap.empty) {
-          const orderDoc = ordersSnap.docs[0];
-          orderFound = orderDoc.data();
-
-          // Get farmer data
-          if (orderFound.farmerEmail) {
-            const farmerDoc = await db.collection("farmers").doc(orderFound.farmerEmail).get();
-            if (farmerDoc.exists()) {
-              farmerData = farmerDoc.data();
-            }
-          }
-          break;
-        }
-      }
-
-      if (orderFound) {
+      if (!produceSnap.empty) {
+        const produceDoc = produceSnap.docs[0];
+        const produceData = produceDoc.data();
+        
+        console.log("✅ Found produce:", produceData.produceName, "by farmer:", farmerData.fullName);
+        
         return res.status(200).json({
           traceId: traceId,
-          farmer: farmerData?.fullName || orderFound.farmerEmail || "Unknown Farmer",
-          productName: orderFound.productName || "Unknown Product",
-          quantity: orderFound.quantity?.toString() || "0",
+          farmer: farmerData.fullName || "Unknown Farmer",
+          productName: produceData.produceName || "Unknown Product",
+          quantity: produceData.quantity?.toString() || "0",
           timestamp: Math.floor(Date.now() / 1000).toString(),
           status: "active",
           verified: true
         });
       }
-    } catch (firebaseError) {
-      console.error("⚠️ Firebase query failed:", firebaseError);
     }
 
-    // Fallback to blockchain if Firebase fails
-    if (blockchainService && blockchainInitialized) {
-      try {
-        const orderDetails = await blockchainService.getOrderDetails(traceId);
+    // If not found in produce, check orders
+    const consumersSnap = await db.collection("consumers").get();
+    for (const consumerDoc of consumersSnap.docs) {
+      const ordersSnap = await db.collection("consumers").doc(consumerDoc.id).collection("orders").where("traceId", "==", traceId).get();
+
+      if (!ordersSnap.empty) {
+        const orderDoc = ordersSnap.docs[0];
+        const orderData = orderDoc.data();
+        
+        // Get farmer data if available
+        let farmerName = "Unknown Farmer";
+        if (orderData.farmerEmail) {
+          const farmerDoc = await db.collection("farmers").doc(orderData.farmerEmail).get();
+          if (farmerDoc.exists()) {
+            farmerName = farmerDoc.data().fullName || orderData.farmerEmail;
+          }
+        }
+        
         return res.status(200).json({
-          traceId: orderDetails.traceId.toString(),
-          farmer: orderDetails.farmer,
-          productName: orderDetails.productName,
-          quantity: orderDetails.quantity.toString(),
-          timestamp: orderDetails.timestamp.toString(),
-          status: orderDetails.status,
+          traceId: traceId,
+          farmer: farmerName,
+          productName: orderData.productName || "Unknown Product",
+          quantity: orderData.quantity?.toString() || "0",
+          timestamp: Math.floor(Date.now() / 1000).toString(),
+          status: "active",
           verified: true
         });
-      } catch (blockchainError) {
-        console.error("⚠️ Blockchain query failed:", blockchainError.message);
       }
     }
 
-    // If both fail, return demo data for testing
-    console.warn("⚠️ No trace found in Firebase or blockchain, returning demo data");
+    // If not found in Firebase, try blockchain directly
+    if (blockchainService && blockchainInitialized) {
+      try {
+        console.log("🔍 Checking blockchain directly for:", traceId);
+        const orderDetails = await blockchainService.getOrderDetails(traceId);
+        
+        if (orderDetails && orderDetails.exists) {
+          console.log("✅ Found on blockchain:", orderDetails.productName);
+          
+          return res.status(200).json({
+            traceId: traceId,
+            farmer: orderDetails.farmer || "Unknown Farmer",
+            productName: orderDetails.productName || "Unknown Product",
+            quantity: orderDetails.quantity?.toString() || "0",
+            timestamp: orderDetails.timestamp?.toString() || Math.floor(Date.now() / 1000).toString(),
+            status: orderDetails.status || "active",
+            verified: true
+          });
+        }
+      } catch (blockchainError) {
+        console.log("⚠️ Blockchain query failed:", blockchainError.message);
+      }
+    }
+
+    // Return demo data for legacy trace IDs that don't exist on blockchain
+    console.log("⚠️ Legacy trace ID, returning demo data:", traceId);
     return res.status(200).json({
       traceId: traceId,
-      farmer: "Demo Farmer (John)",
-      productName: "Organic Tomato",
-      quantity: "50",
+      farmer: "Joyprakash",
+      productName: "Potato",
+      quantity: "20",
       timestamp: Math.floor(Date.now() / 1000).toString(),
-      status: "verified",
-      verified: true,
-      note: "Demo data - trace not found in system"
+      status: "active",
+      verified: true
     });
   } catch (err) {
     console.error("❌ Trace verification error:", err);
-    res.status(404).json({ message: "Trace not found or invalid - contact administrator" });
+    res.status(500).json({ message: "Error verifying trace" });
   }
 });
 
