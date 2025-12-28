@@ -1,5 +1,7 @@
-import React from 'react';
+import React, { useEffect, useState } from 'react';
 import Card from '../components/Card';
+import { collectionGroup, onSnapshot } from 'firebase/firestore';
+import { db } from '../../../../firebaseConfig';
 
 /**
  * Performance Page
@@ -7,51 +9,42 @@ import Card from '../components/Card';
  * Shows: Average delivery time, Active batches, Verification percentage
  */
 const Performance = () => {
-  // Performance metrics
-  const metrics = [
-    {
-      title: 'Average Delivery Time',
-      value: '3.2 days',
-      icon: '🚚',
-      bgColor: 'bg-blue-50',
-      change: '-5%',
-      changeType: 'positive'
-    },
-    {
-      title: 'Active Batches',
-      value: '456',
-      icon: '📦',
-      bgColor: 'bg-green-50',
-      change: '+12%',
-      changeType: 'positive'
-    },
-    {
-      title: 'Verification Rate',
-      value: '98.5%',
-      icon: '✅',
-      bgColor: 'bg-purple-50',
-      change: '+2.3%',
-      changeType: 'positive'
-    },
-    {
-      title: 'Customer Satisfaction',
-      value: '4.7/5',
-      icon: '⭐',
-      bgColor: 'bg-yellow-50',
-      change: '+0.2',
-      changeType: 'positive'
-    }
-  ];
+  const [totalProduce, setTotalProduce] = useState(0);
+  const [verifiedCount, setVerifiedCount] = useState(0);
+  const [metrics, setMetrics] = useState([]);
+  const [performanceIndicators, setPerformanceIndicators] = useState([]);
 
-  // Performance indicators
-  const performanceIndicators = [
-    { label: 'On-Time Delivery Rate', value: 94, target: 95, status: 'good' },
-    { label: 'Product Quality Score', value: 96, target: 90, status: 'excellent' },
-    { label: 'Supply Chain Efficiency', value: 88, target: 85, status: 'excellent' },
-    { label: 'Customer Return Rate', value: 3, target: 5, status: 'excellent', inverse: true },
-    { label: 'Fraud Detection Rate', value: 98, target: 95, status: 'excellent' },
-    { label: 'Network Uptime', value: 99.9, target: 99, status: 'excellent' },
-  ];
+  useEffect(() => {
+    const unsub = onSnapshot(collectionGroup(db, 'produce'), (snap) => {
+      console.log('[Performance] produce snapshot size:', snap.size);
+      const docs = snap.docs.map(d => ({ id: d.id, ...(d.data() || {}) }));
+      const total = docs.length;
+      // verification based on traceId presence
+      const verified = docs.filter(p => !!p.traceId).length;
+      setTotalProduce(total);
+      setVerifiedCount(verified);
+
+      const verificationRate = total > 0 ? `${((verified / total) * 100).toFixed(1)}%` : '0%';
+
+      setMetrics([
+        { title: 'Average Delivery Time', value: 'N/A', icon: '🚚', bgColor: 'bg-blue-50', change: '-%', changeType: 'positive' },
+        { title: 'Active Batches', value: total.toString(), icon: '📦', bgColor: 'bg-green-50', change: '+0%', changeType: 'positive' },
+        { title: 'Verification Rate', value: verificationRate, icon: '✅', bgColor: 'bg-purple-50', change: '+0%', changeType: 'positive' },
+        { title: 'Customer Satisfaction', value: 'N/A', icon: '⭐', bgColor: 'bg-yellow-50', change: '+0', changeType: 'positive' }
+      ]);
+
+      setPerformanceIndicators([
+        { label: 'On-Time Delivery Rate', value: 90, target: 95, status: 'good' },
+        { label: 'Product Quality Score', value: Math.min(100, Math.round((verified / Math.max(1, total)) * 100)), target: 90, status: 'excellent' },
+        { label: 'Supply Chain Efficiency', value: 88, target: 85, status: 'excellent' },
+        { label: 'Customer Return Rate', value: 3, target: 5, status: 'excellent', inverse: true },
+        { label: 'Fraud Detection Rate', value: 98, target: 95, status: 'excellent' },
+        { label: 'Network Uptime', value: 99.9, target: 99, status: 'excellent' }
+      ]);
+    });
+
+    return () => unsub();
+  }, []);
 
   const getStatusColor = (status) => {
     switch (status) {

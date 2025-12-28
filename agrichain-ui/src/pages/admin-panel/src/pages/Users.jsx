@@ -1,4 +1,6 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
+import { collection, onSnapshot } from 'firebase/firestore';
+import { db } from '../../../../firebaseConfig';
 
 /**
  * Users Page
@@ -6,19 +8,48 @@ import React, { useState } from 'react';
  * Shows: Name, Role (Farmer/Distributor/Retailer), User ID
  */
 const Users = () => {
-  // Dummy user data
-  const [users] = useState([
-    { id: 'USR001', name: 'John Smith', role: 'Farmer', email: 'john.smith@agri.com', status: 'Active' },
-    { id: 'USR002', name: 'Sarah Johnson', role: 'Distributor', email: 'sarah.j@logistics.com', status: 'Active' },
-    { id: 'USR003', name: 'Michael Chen', role: 'Retailer', email: 'michael.c@retail.com', status: 'Active' },
-    { id: 'USR004', name: 'Emily Davis', role: 'Farmer', email: 'emily.d@agri.com', status: 'Active' },
-    { id: 'USR005', name: 'David Wilson', role: 'Distributor', email: 'david.w@logistics.com', status: 'Inactive' },
-    { id: 'USR006', name: 'Lisa Anderson', role: 'Retailer', email: 'lisa.a@retail.com', status: 'Active' },
-    { id: 'USR007', name: 'James Brown', role: 'Farmer', email: 'james.b@agri.com', status: 'Active' },
-    { id: 'USR008', name: 'Maria Garcia', role: 'Distributor', email: 'maria.g@logistics.com', status: 'Active' },
-    { id: 'USR009', name: 'Robert Taylor', role: 'Retailer', email: 'robert.t@retail.com', status: 'Active' },
-    { id: 'USR010', name: 'Jennifer Lee', role: 'Farmer', email: 'jennifer.l@agri.com', status: 'Active' },
-  ]);
+  const [users, setUsers] = useState([]);
+
+  useEffect(() => {
+    // keep latest snapshots locally and merge deterministically
+    let latestFarmers = [];
+    let latestConsumers = [];
+
+    const mergeAndSet = () => {
+      setUsers([...latestFarmers, ...latestConsumers]);
+    };
+
+    const farmersCol = collection(db, 'farmers');
+    const unsubF = onSnapshot(farmersCol, (snap) => {
+      console.log('[Users] farmers snapshot size:', snap.size);
+      latestFarmers = snap.docs.map(doc => ({
+        id: doc.id,
+        name: doc.data()?.fullName || doc.id,
+        role: 'Farmer',
+        email: doc.data()?.email || doc.id,
+        status: 'Active'
+      }));
+      mergeAndSet();
+    });
+
+    const consumersCol = collection(db, 'consumers');
+    const unsubC = onSnapshot(consumersCol, (snap) => {
+      console.log('[Users] consumers snapshot size:', snap.size);
+      latestConsumers = snap.docs.map(doc => ({
+        id: doc.id,
+        name: doc.data()?.fullName || doc.id,
+        role: 'Consumer',
+        email: doc.data()?.email || doc.id,
+        status: 'Active'
+      }));
+      mergeAndSet();
+    });
+
+    return () => {
+      unsubF && unsubF();
+      unsubC && unsubC();
+    };
+  }, []);
 
   // Role badge colors
   const getRoleBadgeColor = (role) => {
