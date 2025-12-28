@@ -74,47 +74,54 @@ export const verifyBatch = async (req, res) => {
     const { traceId } = req.body || {};
     const db = admin.firestore();
     
-    try {
-      // Collect all produce docs by iterating through farmers (workaround for collectionGroup permission issues)
-      const allProduceDocs = [];
-      const farmersSnap = await db.collection('farmers').get();
-      
-      for (const farmerDoc of farmersSnap.docs) {
-        const produceSnap = await farmerDoc.ref.collection('produce').get();
-        produceSnap.forEach(doc => {
-          allProduceDocs.push({ ref: doc.ref, data: doc.data() });
-        });
-      }
-      
-      // Filter by traceId if provided, otherwise get unverified (no traceId or status != 'verified')
-      let docsToUpdate = allProduceDocs;
-      if (traceId) {
-        docsToUpdate = allProduceDocs.filter(d => d.data.traceId === traceId);
-      } else {
-        // Unverified = no traceId yet
-        docsToUpdate = allProduceDocs.filter(d => !d.data.traceId);
-      }
-      
-      if (docsToUpdate.length === 0) {
-        return res.status(200).json({ message: 'No produce to verify', count: 0 });
-      }
-      
-      const updates = [];
-      docsToUpdate.forEach(item => {
-        updates.push(item.ref.update({ status: 'verified', verifiedAt: admin.firestore.FieldValue.serverTimestamp() }));
+    console.log('🔍 [verifyBatch] Starting verification. traceId:', traceId || 'all unverified');
+    
+    // Collect all produce docs by iterating through farmers
+    const allProduceDocs = [];
+    const farmersSnap = await db.collection('farmers').get();
+    console.log(`📁 Found ${farmersSnap.size} farmers`);
+    
+    for (const farmerDoc of farmersSnap.docs) {
+      const produceSnap = await farmerDoc.ref.collection('produce').get();
+      console.log(`  └─ ${farmerDoc.id}: ${produceSnap.size} produce docs`);
+      produceSnap.forEach(doc => {
+        allProduceDocs.push({ ref: doc.ref, data: doc.data() });
       });
-      await Promise.all(updates);
-      return res.status(200).json({ message: 'Batch verified', count: updates.length });
-    } catch (fbErr) {
-      // If Firestore rules deny access, just return success (demo mode)
-      console.warn('verifyBatch Firestore access limited:', fbErr.code, fbErr.message);
-      return res.status(200).json({ message: 'Batch verified (admin mode)', count: 0 });
     }
+    
+    console.log(`📦 Total produce docs found: ${allProduceDocs.length}`);
+    
+    // Filter by traceId if provided, otherwise get unverified (no status='verified')
+    let docsToUpdate = allProduceDocs;
+    if (traceId) {
+      docsToUpdate = allProduceDocs.filter(d => d.data.traceId === traceId);
+      console.log(`🔎 Filtered by traceId: ${docsToUpdate.length} docs`);
+    } else {
+      // Unverified = status != 'verified'
+      docsToUpdate = allProduceDocs.filter(d => d.data.status !== 'verified');
+      console.log(`⏳ Unverified docs (status != 'verified'): ${docsToUpdate.length}`);
+    }
+    
+    if (docsToUpdate.length === 0) {
+      console.log('✅ All batches are already verified!');
+      return res.status(200).json({ message: 'All batches already verified', count: 0 });
+    }
+    
+    console.log(`⚙️ Updating ${docsToUpdate.length} documents...`);
+    const updates = [];
+    docsToUpdate.forEach(item => {
+      console.log(`  ✏️ Updating: ${item.ref.path}`);
+      updates.push(item.ref.update({ status: 'verified', verifiedAt: admin.firestore.FieldValue.serverTimestamp() }));
+    });
+    
+    await Promise.all(updates);
+    console.log(`✅ [verifyBatch] Success! Updated ${updates.length} batches`);
+    return res.status(200).json({ message: 'Batch verified', count: updates.length });
   } catch (err) {
-    console.error('admin.verifyBatch error:', err.message, err.code);
+    console.error('❌ [verifyBatch] Error:', err.code, err.message);
     return res.status(500).json({ message: `Verify failed: ${err.message}` });
   }
-};
+};;
 
 export const generateReport = async (req, res) => {
   try {
