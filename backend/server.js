@@ -14,6 +14,7 @@ import BlockchainService from "./blockchain.js";
 import QRCode from "qrcode";
 import { createServer } from "http";
 import { Server } from "socket.io";
+import adminRoutes from './routes/adminRoutes.js';
 
 dotenv.config();
 
@@ -139,6 +140,9 @@ app.post("/api/upload", upload.single("image"), (req, res) => {
 });
 
 app.use("/uploads", express.static(path.join(__dirname, "uploads")));
+
+// Admin routes (secure via ADMIN_SECRET header)
+app.use('/api/admin', adminRoutes);
 
 // ============================
 // 👨‍🌾 FARMER ROUTES

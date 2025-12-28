@@ -41,37 +41,13 @@ const Transactions = () => {
 
     // no search listener (removed)
 
-    // verify batch handler
-    const verifyHandler = async () => {
-      if (!selectedTrace) {
-        alert('Select a batch from Transactions');
-        return;
-      }
-      try {
-        const q = query(collectionGroup(db, 'produce'), where('traceId', '==', selectedTrace));
-        const snap = await getDocs(q);
-        if (snap.empty) {
-          alert('No produce found for selected trace');
-          return;
-        }
-        const updates = [];
-        snap.docs.forEach(d => {
-          updates.push(updateDoc(d.ref, { status: 'verified' }));
-        });
-        await Promise.all(updates);
-        alert('Batch verified');
-      } catch (err) {
-        console.error('Verify batch failed', err);
-        alert('Verification failed');
-      }
-    };
-    window.addEventListener('admin-verify-batch', verifyHandler);
-
     return () => {
       unsub();
-      window.removeEventListener('admin-verify-batch', verifyHandler);
     };
   }, [selectedTrace]);
+
+  // API base (kept for consistency with other admin pages)
+  const API_BASE = import.meta.env.VITE_API_BASE || 'http://localhost:8080';
 
   // Get status badge color
   const getStatusBadge = (status) => {

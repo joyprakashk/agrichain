@@ -71,6 +71,19 @@ const Sidebar = () => {
           <span className="font-medium">Transactions</span>
         </NavLink>
         <NavLink
+          to="batches"
+          className={({ isActive }) =>
+            `flex items-center space-x-3 px-4 py-3 rounded-lg transition-colors duration-200 ${
+              isActive
+                ? 'bg-green-600 text-white'
+                : 'text-gray-300 hover:bg-gray-800 hover:text-white'
+            }`
+          }
+        >
+          <span className="text-xl">🌾</span>
+          <span className="font-medium">Batches</span>
+        </NavLink>
+        <NavLink
           to="analytics"
           className={({ isActive }) =>
             `flex items-center space-x-3 px-4 py-3 rounded-lg transition-colors duration-200 ${

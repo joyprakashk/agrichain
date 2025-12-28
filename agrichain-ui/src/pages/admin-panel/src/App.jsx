@@ -6,6 +6,7 @@ import Navbar from "./components/Navbar";
 import Dashboard from "./pages/Dashboard";
 import Users from "./pages/Users";
 import Transactions from "./pages/Transactions";
+import Batches from "./pages/Batches";
 import Analytics from "./pages/Analytics";
 import Performance from "./pages/Performance";
 
@@ -33,6 +34,7 @@ function App() {
               <Route path="dashboard" element={<Dashboard />} />
               <Route path="users" element={<Users />} />
               <Route path="transactions" element={<Transactions />} />
+              <Route path="batches" element={<Batches />} />
               <Route path="analytics" element={<Analytics />} />
               <Route path="performance" element={<Performance />} />
             </Routes>

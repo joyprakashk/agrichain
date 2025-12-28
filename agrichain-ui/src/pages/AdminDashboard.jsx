@@ -8,6 +8,7 @@ import Navbar from "./admin-panel/src/components/Navbar";
 import Dashboard from "./admin-panel/src/pages/Dashboard";
 import Users from "./admin-panel/src/pages/Users";
 import Transactions from "./admin-panel/src/pages/Transactions";
+import Batches from "./admin-panel/src/pages/Batches";
 import Analytics from "./admin-panel/src/pages/Analytics";
 import Performance from "./admin-panel/src/pages/Performance";
 
@@ -32,6 +33,7 @@ const AdminDashboard = () => {
             <Route path="dashboard" element={<Dashboard />} />
             <Route path="users" element={<Users />} />
             <Route path="transactions" element={<Transactions />} />
+            <Route path="batches" element={<Batches />} />
             <Route path="analytics" element={<Analytics />} />
             <Route path="performance" element={<Performance />} />
             {/* Fallback within admin */}

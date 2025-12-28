@@ -103,6 +103,9 @@ const Dashboard = () => {
     return () => unsubscribers.forEach(u => u && typeof u === 'function' && u());
   }, []);
 
+  // API base for backend admin endpoints
+  const API_BASE = import.meta.env.VITE_API_BASE || 'http://localhost:8080';
+
   // Quick Actions handlers
   useEffect(() => {
     const onAddUser = () => {
@@ -122,30 +125,15 @@ const Dashboard = () => {
 
     const onGenerateReport = async () => {
       try {
-        const farmersSnap = await getDocs(collection(db, 'farmers'));
-        const farmers = farmersSnap.docs.map(d => ({ id: d.id, ...(d.data()||{}) }));
-
-        const produceSnap = await getDocs(collectionGroup(db, 'produce'));
-        const produce = produceSnap.docs.map(d => ({ id: d.id, ...(d.data()||{}), _refPath: d.ref.path }));
-
-        const ordersSnap = await getDocs(collectionGroup(db, 'orders'));
-        const orders = ordersSnap.docs.map(d => ({ id: d.id, ...(d.data()||{}) }));
-
-        const csvSections = [];
-        csvSections.push('Users');
-        csvSections.push('id,fullName,email,registeredAt');
-        farmers.forEach(f => csvSections.push(`${f.id},"${(f.fullName||'').replace(/"/g,'""')}",${f.email || ''},${fmtDate(f.registeredAt)}`));
-
-        csvSections.push('\nProduce');
-        csvSections.push('id,produceName,quantity,status,traceId,farmerPath,createdAt');
-        produce.forEach(p => csvSections.push(`${p.id},"${(p.produceName||'').replace(/"/g,'""')}",${p.quantity||''},${p.status||''},${p.traceId||''},"${p._refPath}","${fmtDate(p.createdAt)}"`));
-
-        csvSections.push('\nOrders');
-        csvSections.push('id,productName,farmerEmail,consumerEmail,status,traceId,createdAt');
-        orders.forEach(o => csvSections.push(`${o.id},"${(o.productName||'').replace(/"/g,'""')}",${o.farmerEmail||''},${o.consumerEmail||''},${o.status||''},${o.traceId||''},"${fmtDate(o.createdAt)}"`));
-
-        const csvContent = csvSections.join('\n');
-        const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+        const secret = import.meta.env.VITE_ADMIN_SECRET || '';
+        const resp = await fetch(`${API_BASE}/api/admin/generate-report`, { headers: { 'x-admin-secret': secret } });
+        const text = await resp.text();
+        if (!resp.ok) {
+          let json = {};
+          try { json = text ? JSON.parse(text) : {}; } catch (e) { json = {}; }
+          throw new Error(json.message || resp.statusText || 'Report failed');
+        }
+        const blob = new Blob([text], { type: 'text/csv' });
         const url = URL.createObjectURL(blob);
         const a = document.createElement('a');
         a.href = url;
@@ -160,25 +148,18 @@ const Dashboard = () => {
 
     const onVerifyBatch = async () => {
       try {
-        const snap = await getDocs(collectionGroup(db, 'produce'));
-        const docs = snap.docs.map(d => ({ ref: d.ref, id: d.id, data: d.data() || {} }));
-        const unverified = docs.filter(d => !d.data.traceId);
-        if (unverified.length === 0) {
-          alert('No unverified produce found');
-          return;
-        }
-        // sort by createdAt desc
-        unverified.sort((a,b) => {
-          const da = a.data.createdAt && a.data.createdAt.toDate ? a.data.createdAt.toDate().getTime() : (a.data.createdAt ? new Date(a.data.createdAt).getTime() : 0);
-          const dbt = b.data.createdAt && b.data.createdAt.toDate ? b.data.createdAt.toDate().getTime() : (b.data.createdAt ? new Date(b.data.createdAt).getTime() : 0);
-          return dbt - da;
-        });
-        const target = unverified[0];
-        await updateDoc(target.ref, { status: 'verified', verifiedAt: serverTimestamp() });
-        alert('Latest unverified produce marked as verified');
+        const secret = import.meta.env.VITE_ADMIN_SECRET || '';
+        const resp = await fetch(`${API_BASE}/api/admin/verify-batch`, { method: 'POST', headers: { 'Content-Type': 'application/json', 'x-admin-secret': secret }, body: JSON.stringify({}) });
+        const text = await resp.text();
+        let json = null;
+        try { json = text ? JSON.parse(text) : null; } catch (e) { json = null; }
+        if (!resp.ok) throw new Error((json && json.message) || resp.statusText || 'Verify failed');
+        alert('Batch verified');
+        if (window.adminNotify) window.adminNotify('✅ Batch verified successfully');
       } catch (err) {
         console.error('Verify batch failed', err);
         alert('Verification failed');
+        if (window.adminNotify) window.adminNotify('❌ Batch verification failed');
       }
     };
 

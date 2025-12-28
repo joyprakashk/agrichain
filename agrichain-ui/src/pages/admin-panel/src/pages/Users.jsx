@@ -69,6 +69,9 @@ const Users = () => {
     return () => window.removeEventListener('focus-users', handler);
   }, []);
 
+  // API base for backend admin endpoints
+  const API_BASE = import.meta.env.VITE_API_BASE || 'http://localhost:8080';
+
   const startEdit = (user) => {
     setEditingId(user.id);
     setEditName(user.name || '');
@@ -83,25 +86,43 @@ const Users = () => {
 
   const saveEdit = async (user) => {
     try {
-      const collectionName = user.role === 'Farmer' ? 'farmers' : 'consumers';
-      const ref = doc(db, collectionName, user.id);
-      await updateDoc(ref, { fullName: editName, role: editRole });
+      const secret = import.meta.env.VITE_ADMIN_SECRET || '';
+      const res = await fetch(`${API_BASE}/api/admin/edit-user`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'x-admin-secret': secret },
+        body: JSON.stringify({ id: user.id, fullName: editName, role: editRole })
+      });
+      const text = await res.text();
+      let json = null;
+      try { json = text ? JSON.parse(text) : null; } catch (e) { json = null; }
+      if (!res.ok) throw new Error((json && json.message) || res.statusText || 'Edit failed');
       cancelEdit();
+      if (window.adminNotify) window.adminNotify(`✅ User ${user.name} updated`);
     } catch (err) {
       console.error('Failed to save user edit', err);
       alert('Failed to save changes');
+      if (window.adminNotify) window.adminNotify(`❌ Failed to update user`);
     }
   };
 
   const deleteUser = async (user) => {
     if (!confirm(`Delete user ${user.name || user.id}? This cannot be undone.`)) return;
     try {
-      const collectionName = user.role === 'Farmer' ? 'farmers' : 'consumers';
-      const ref = doc(db, collectionName, user.id);
-      await deleteDoc(ref);
+      const secret = import.meta.env.VITE_ADMIN_SECRET || '';
+      const res = await fetch(`${API_BASE}/api/admin/delete-user`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'x-admin-secret': secret },
+        body: JSON.stringify({ id: user.id, role: user.role })
+      });
+      const text = await res.text();
+      let json = null;
+      try { json = text ? JSON.parse(text) : null; } catch (e) { json = null; }
+      if (!res.ok) throw new Error((json && json.message) || res.statusText || 'Delete failed');
+      if (window.adminNotify) window.adminNotify(`🗑️ User ${user.name} deleted`);
     } catch (err) {
       console.error('Failed to delete user', err);
       alert('Delete failed');
+      if (window.adminNotify) window.adminNotify(`❌ Failed to delete user`);
     }
   };
 
@@ -115,14 +136,23 @@ const Users = () => {
       return;
     }
     try {
-      const collectionName = role === 'Farmer' ? 'farmers' : 'consumers';
-      const ref = doc(db, collectionName, email);
-      await setDoc(ref, { fullName: name, email, role, registeredAt: serverTimestamp() }, { merge: true });
+      const secret = import.meta.env.VITE_ADMIN_SECRET || '';
+      const res = await fetch(`${API_BASE}/api/admin/add-user`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'x-admin-secret': secret },
+        body: JSON.stringify({ email, fullName: name, role })
+      });
+      const text = await res.text();
+      let json = null;
+      try { json = text ? JSON.parse(text) : null; } catch (e) { json = null; }
+      if (!res.ok) throw new Error((json && json.message) || res.statusText || 'Add failed');
       setNewName(''); setNewEmail(''); setNewRole('Farmer');
       alert('User added');
+      if (window.adminNotify) window.adminNotify(`✅ New ${newRole} user "${name}" added`);
     } catch (err) {
       console.error('Failed to add user', err);
       alert('Add user failed');
+      if (window.adminNotify) window.adminNotify(`❌ Failed to add user`);
     }
   };
 
@@ -158,13 +188,13 @@ const Users = () => {
           </p>
         </div>
         <form onSubmit={addUser} className="flex items-center space-x-3">
-          <input value={newName} onChange={e => setNewName(e.target.value)} placeholder="Full name" className="px-3 py-2 border rounded-lg" />
-          <input value={newEmail} onChange={e => setNewEmail(e.target.value)} placeholder="email@example.com" className="px-3 py-2 border rounded-lg" />
-          <select value={newRole} onChange={e => setNewRole(e.target.value)} className="px-3 py-2 border rounded-lg">
+          <input value={newName} onChange={e => setNewName(e.target.value)} placeholder="Full name" className="px-3 py-2 border border-gray-300 rounded-lg text-gray-900 placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-green-500" />
+          <input value={newEmail} onChange={e => setNewEmail(e.target.value)} placeholder="email@example.com" className="px-3 py-2 border border-gray-300 rounded-lg text-gray-900 placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-green-500" />
+          <select value={newRole} onChange={e => setNewRole(e.target.value)} className="px-3 py-2 border border-gray-300 rounded-lg text-gray-900 focus:outline-none focus:ring-2 focus:ring-green-500">
             <option>Farmer</option>
             <option>Consumer</option>
           </select>
-          <button type="submit" className="px-4 py-2 bg-green-500 text-white rounded-lg">➕ Add</button>
+          <button type="submit" className="px-5 py-2 bg-green-600 text-white font-semibold rounded-lg hover:bg-green-700 transition-colors whitespace-nowrap">➕ Add User</button>
         </form>
       </div>
 
