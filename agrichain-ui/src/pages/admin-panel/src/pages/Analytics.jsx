@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { collection, collectionGroup, onSnapshot } from 'firebase/firestore';
+import { collection, collectionGroup, onSnapshot, getDocs } from 'firebase/firestore';
 import { db } from '../../../../firebaseConfig';
 
 /**
@@ -10,9 +10,13 @@ const Analytics = () => {
   const [analyticsData, setAnalyticsData] = useState([]);
   const [totalProduce, setTotalProduce] = useState(0);
   const [verifiedCount, setVerifiedCount] = useState(0);
+  const [computedMonthly, setComputedMonthly] = useState({});
+  const [productsByCategory, setProductsByCategory] = useState({});
+  const [farmersByLocation, setFarmersByLocation] = useState({});
 
   useEffect(() => {
-    const unsubProduce = onSnapshot(collectionGroup(db, 'produce'), (snap) => {
+    let unsubProduce = null;
+    unsubProduce = onSnapshot(collectionGroup(db, 'produce'), (snap) => {
       console.log('[Analytics] produce snapshot size:', snap.size);
       const docs = snap.docs.map(d => d.data() || {});
       const total = docs.length;
@@ -31,7 +35,50 @@ const Analytics = () => {
         { category: 'Fraud Detection Rate', score: fraudDetection, trend: 'stable' },
         { category: 'User Satisfaction', score: userSatisfaction, trend: userSatisfaction > 80 ? 'up' : 'down' }
       ]);
+    }, (err) => {
+      console.error('[Analytics] produce snapshot error', err);
+      if (typeof unsubProduce === 'function') try { unsubProduce(); } catch(e){}
     });
+
+
+    // Also compute monthly transaction volumes and products by category and farmer locations
+    (async () => {
+      try {
+        const ordersSnap = await getDocs(collectionGroup(db, 'orders'));
+        const orders = ordersSnap.docs.map(d => ({ ...(d.data()||{}) }));
+        // monthly volumes
+        const monthly = {};
+        orders.forEach(o => {
+          const dt = o.createdAt && o.createdAt.toDate ? o.createdAt.toDate() : (o.createdAt ? new Date(o.createdAt) : null);
+          if (!dt) return;
+          const key = `${dt.getFullYear()}-${dt.getMonth()+1}`;
+          monthly[key] = (monthly[key] || 0) + 1;
+        });
+
+        const produceSnap = await getDocs(collectionGroup(db, 'produce'));
+        const produce = produceSnap.docs.map(d => ({ ...(d.data()||{}) }));
+        const byCategory = {};
+        produce.forEach(p => {
+          const cat = p.category || 'Uncategorized';
+          byCategory[cat] = (byCategory[cat] || 0) + 1;
+        });
+
+        const farmersSnap = await getDocs(collection(db, 'farmers'));
+        const byLocation = {};
+        farmersSnap.docs.forEach(f => {
+          const data = f.data() || {};
+          const loc = data.location || (data.coordinates ? `${data.coordinates.lat},${data.coordinates.lng}` : 'Unknown');
+          byLocation[loc] = (byLocation[loc] || 0) + 1;
+        });
+
+        // attach computed summaries to state so placeholders can display numbers
+        setComputedMonthly(monthly);
+        setProductsByCategory(byCategory);
+        setFarmersByLocation(byLocation);
+      } catch (err) {
+        console.error('Analytics computation failed', err);
+      }
+    })();
 
     return () => unsubProduce();
   }, []);
@@ -111,9 +158,14 @@ const Analytics = () => {
               <p className="text-lg font-medium text-gray-700">
                 Line Chart Placeholder
               </p>
-              <p className="text-sm text-gray-500 mt-2">
-                Future implementation: React Chart.js or Recharts
-              </p>
+                <p className="text-sm text-gray-500 mt-2">
+                  Total Orders: {Object.values(computedMonthly).reduce((a,b) => a + b, 0)}
+                </p>
+                <div className="text-sm text-gray-600 mt-2">
+                  {Object.keys(computedMonthly).slice(0,6).map(k => (
+                    <div key={k}>{k}: {computedMonthly[k]}</div>
+                  ))}
+                </div>
             </div>
           </div>
         </div>
@@ -130,8 +182,13 @@ const Analytics = () => {
                 Bar Chart Placeholder
               </p>
               <p className="text-sm text-gray-500 mt-2">
-                Future implementation: Product distribution analysis
+                Categories: {Object.keys(productsByCategory).length}
               </p>
+              <div className="text-sm text-gray-600 mt-2">
+                {Object.entries(productsByCategory).slice(0,6).map(([cat, n]) => (
+                  <div key={cat}>{cat}: {n}</div>
+                ))}
+              </div>
             </div>
           </div>
         </div>
@@ -149,8 +206,13 @@ const Analytics = () => {
               Map Visualization Placeholder
             </p>
             <p className="text-sm text-gray-500 mt-2">
-              Future implementation: Interactive map showing farm locations, distribution centers, and retail points
+              Farmers locations: {Object.keys(farmersByLocation).length}
             </p>
+            <div className="text-sm text-gray-600 mt-2">
+              {Object.entries(farmersByLocation).slice(0,6).map(([loc, n]) => (
+                <div key={loc}>{loc}: {n}</div>
+              ))}
+            </div>
           </div>
         </div>
       </div>

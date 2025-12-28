@@ -15,7 +15,8 @@ const Performance = () => {
   const [performanceIndicators, setPerformanceIndicators] = useState([]);
 
   useEffect(() => {
-    const unsub = onSnapshot(collectionGroup(db, 'produce'), (snap) => {
+    let unsub = null;
+    unsub = onSnapshot(collectionGroup(db, 'produce'), (snap) => {
       console.log('[Performance] produce snapshot size:', snap.size);
       const docs = snap.docs.map(d => ({ id: d.id, ...(d.data() || {}) }));
       const total = docs.length;
@@ -41,6 +42,9 @@ const Performance = () => {
         { label: 'Fraud Detection Rate', value: 98, target: 95, status: 'excellent' },
         { label: 'Network Uptime', value: 99.9, target: 99, status: 'excellent' }
       ]);
+    }, (err) => {
+      console.error('[Performance] produce snapshot error', err);
+      if (typeof unsub === 'function') try { unsub(); } catch(e){}
     });
 
     return () => unsub();

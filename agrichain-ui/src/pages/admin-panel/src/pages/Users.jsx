@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { collection, onSnapshot } from 'firebase/firestore';
+import { collection, onSnapshot, doc, updateDoc, deleteDoc, setDoc, serverTimestamp } from 'firebase/firestore';
 import { db } from '../../../../firebaseConfig';
 
 /**
@@ -9,6 +9,13 @@ import { db } from '../../../../firebaseConfig';
  */
 const Users = () => {
   const [users, setUsers] = useState([]);
+  const [editingId, setEditingId] = useState(null);
+  const [editName, setEditName] = useState('');
+  const [editRole, setEditRole] = useState('');
+  // Add user form state
+  const [newName, setNewName] = useState('');
+  const [newEmail, setNewEmail] = useState('');
+  const [newRole, setNewRole] = useState('Farmer');
 
   useEffect(() => {
     // keep latest snapshots locally and merge deterministically
@@ -30,6 +37,8 @@ const Users = () => {
         status: 'Active'
       }));
       mergeAndSet();
+    }, (err) => {
+      console.error('[Users] farmers snapshot error', err);
     });
 
     const consumersCol = collection(db, 'consumers');
@@ -43,6 +52,8 @@ const Users = () => {
         status: 'Active'
       }));
       mergeAndSet();
+    }, (err) => {
+      console.error('[Users] consumers snapshot error', err);
     });
 
     return () => {
@@ -50,6 +61,70 @@ const Users = () => {
       unsubC && unsubC();
     };
   }, []);
+
+  // focus-users support (optional): scroll to top of page when requested
+  useEffect(() => {
+    const handler = () => window.scrollTo({ top: 0, behavior: 'smooth' });
+    window.addEventListener('focus-users', handler);
+    return () => window.removeEventListener('focus-users', handler);
+  }, []);
+
+  const startEdit = (user) => {
+    setEditingId(user.id);
+    setEditName(user.name || '');
+    setEditRole(user.role || '');
+  };
+
+  const cancelEdit = () => {
+    setEditingId(null);
+    setEditName('');
+    setEditRole('');
+  };
+
+  const saveEdit = async (user) => {
+    try {
+      const collectionName = user.role === 'Farmer' ? 'farmers' : 'consumers';
+      const ref = doc(db, collectionName, user.id);
+      await updateDoc(ref, { fullName: editName, role: editRole });
+      cancelEdit();
+    } catch (err) {
+      console.error('Failed to save user edit', err);
+      alert('Failed to save changes');
+    }
+  };
+
+  const deleteUser = async (user) => {
+    if (!confirm(`Delete user ${user.name || user.id}? This cannot be undone.`)) return;
+    try {
+      const collectionName = user.role === 'Farmer' ? 'farmers' : 'consumers';
+      const ref = doc(db, collectionName, user.id);
+      await deleteDoc(ref);
+    } catch (err) {
+      console.error('Failed to delete user', err);
+      alert('Delete failed');
+    }
+  };
+
+  const addUser = async (e) => {
+    e.preventDefault();
+    const name = newName.trim();
+    const email = newEmail.trim();
+    const role = newRole;
+    if (!name || !email) {
+      alert('Please provide name and email');
+      return;
+    }
+    try {
+      const collectionName = role === 'Farmer' ? 'farmers' : 'consumers';
+      const ref = doc(db, collectionName, email);
+      await setDoc(ref, { fullName: name, email, role, registeredAt: serverTimestamp() }, { merge: true });
+      setNewName(''); setNewEmail(''); setNewRole('Farmer');
+      alert('User added');
+    } catch (err) {
+      console.error('Failed to add user', err);
+      alert('Add user failed');
+    }
+  };
 
   // Role badge colors
   const getRoleBadgeColor = (role) => {
@@ -82,9 +157,15 @@ const Users = () => {
             Manage all users in the agricultural supply chain
           </p>
         </div>
-        <button className="px-6 py-3 bg-green-500 text-white rounded-lg hover:bg-green-600 transition-colors font-medium">
-          ➕ Add New User
-        </button>
+        <form onSubmit={addUser} className="flex items-center space-x-3">
+          <input value={newName} onChange={e => setNewName(e.target.value)} placeholder="Full name" className="px-3 py-2 border rounded-lg" />
+          <input value={newEmail} onChange={e => setNewEmail(e.target.value)} placeholder="email@example.com" className="px-3 py-2 border rounded-lg" />
+          <select value={newRole} onChange={e => setNewRole(e.target.value)} className="px-3 py-2 border rounded-lg">
+            <option>Farmer</option>
+            <option>Consumer</option>
+          </select>
+          <button type="submit" className="px-4 py-2 bg-green-500 text-white rounded-lg">➕ Add</button>
+        </form>
       </div>
 
       {/* Stats Cards */}
@@ -142,18 +223,29 @@ const Users = () => {
                   <td className="px-6 py-4 whitespace-nowrap">
                     <div className="flex items-center">
                       <div className="w-10 h-10 bg-green-500 rounded-full flex items-center justify-center text-white font-bold mr-3">
-                        {user.name.charAt(0)}
+                        {(user.name || '').charAt(0)}
                       </div>
-                      <span className="text-sm font-medium text-gray-900">{user.name}</span>
+                      {editingId === user.id ? (
+                        <input value={editName} onChange={e => setEditName(e.target.value)} className="text-sm font-medium text-gray-900 border-b" />
+                      ) : (
+                        <span className="text-sm font-medium text-gray-900">{user.name}</span>
+                      )}
                     </div>
                   </td>
                   <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-600">
                     {user.email}
                   </td>
                   <td className="px-6 py-4 whitespace-nowrap">
-                    <span className={`px-3 py-1 inline-flex text-xs leading-5 font-semibold rounded-full ${getRoleBadgeColor(user.role)}`}>
-                      {user.role}
-                    </span>
+                    {editingId === user.id ? (
+                      <select value={editRole} onChange={e => setEditRole(e.target.value)} className={`px-3 py-1 inline-flex text-xs leading-5 font-semibold rounded-full ${getRoleBadgeColor(editRole)}`}>
+                        <option>Farmer</option>
+                        <option>Consumer</option>
+                      </select>
+                    ) : (
+                      <span className={`px-3 py-1 inline-flex text-xs leading-5 font-semibold rounded-full ${getRoleBadgeColor(user.role)}`}>
+                        {user.role}
+                      </span>
+                    )}
                   </td>
                   <td className="px-6 py-4 whitespace-nowrap">
                     <span className={`px-3 py-1 inline-flex text-xs leading-5 font-semibold rounded-full ${getStatusBadgeColor(user.status)}`}>
@@ -161,8 +253,17 @@ const Users = () => {
                     </span>
                   </td>
                   <td className="px-6 py-4 whitespace-nowrap text-sm">
-                    <button className="text-blue-600 hover:text-blue-900 mr-3">Edit</button>
-                    <button className="text-red-600 hover:text-red-900">Delete</button>
+                    {editingId === user.id ? (
+                      <>
+                        <button onClick={() => saveEdit(user)} className="text-green-600 hover:text-green-900 mr-3">Save</button>
+                        <button onClick={cancelEdit} className="text-gray-600 hover:text-gray-900 mr-3">Cancel</button>
+                      </>
+                    ) : (
+                      <>
+                        <button onClick={() => startEdit(user)} className="text-blue-600 hover:text-blue-900 mr-3">Edit</button>
+                        <button onClick={() => deleteUser(user)} className="text-red-600 hover:text-red-900">Delete</button>
+                      </>
+                    )}
                   </td>
                 </tr>
               ))}

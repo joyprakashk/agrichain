@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { collectionGroup, onSnapshot } from 'firebase/firestore';
+import { collectionGroup, onSnapshot, getDocs, query, where, updateDoc } from 'firebase/firestore';
 import { db } from '../../../../firebaseConfig';
 
 /**
@@ -9,9 +9,11 @@ import { db } from '../../../../firebaseConfig';
  */
 const Transactions = () => {
   const [transactions, setTransactions] = useState([]);
+  const [selectedTrace, setSelectedTrace] = useState(null);
 
   useEffect(() => {
-    const unsub = onSnapshot(collectionGroup(db, 'orders'), (snap) => {
+    let unsub = null;
+    unsub = onSnapshot(collectionGroup(db, 'orders'), (snap) => {
       console.log('[Transactions] orders snapshot size:', snap.size);
       const items = snap.docs.map((doc, idx) => {
         const data = doc.data() || {}
@@ -32,10 +34,44 @@ const Transactions = () => {
       items.sort((a,b) => (b.createdAt?.getTime() || 0) - (a.createdAt?.getTime() || 0))
       console.log('[Transactions] parsed items count:', items.length)
       setTransactions(items)
+    }, (err) => {
+      console.error('[Transactions] orders snapshot error', err);
+      if (typeof unsub === 'function') try { unsub(); } catch(e){}
     })
 
-    return () => unsub();
-  }, []);
+    // no search listener (removed)
+
+    // verify batch handler
+    const verifyHandler = async () => {
+      if (!selectedTrace) {
+        alert('Select a batch from Transactions');
+        return;
+      }
+      try {
+        const q = query(collectionGroup(db, 'produce'), where('traceId', '==', selectedTrace));
+        const snap = await getDocs(q);
+        if (snap.empty) {
+          alert('No produce found for selected trace');
+          return;
+        }
+        const updates = [];
+        snap.docs.forEach(d => {
+          updates.push(updateDoc(d.ref, { status: 'verified' }));
+        });
+        await Promise.all(updates);
+        alert('Batch verified');
+      } catch (err) {
+        console.error('Verify batch failed', err);
+        alert('Verification failed');
+      }
+    };
+    window.addEventListener('admin-verify-batch', verifyHandler);
+
+    return () => {
+      unsub();
+      window.removeEventListener('admin-verify-batch', verifyHandler);
+    };
+  }, [selectedTrace]);
 
   // Get status badge color
   const getStatusBadge = (status) => {
@@ -127,7 +163,7 @@ const Transactions = () => {
             </thead>
             <tbody className="bg-white divide-y divide-gray-200">
               {transactions.map((tx) => (
-                <tr key={tx.id} className="hover:bg-gray-50 transition-colors">
+                <tr key={tx.id} onClick={() => setSelectedTrace(tx.traceId)} className={`hover:bg-gray-50 transition-colors ${selectedTrace === tx.traceId ? 'bg-gray-100' : ''}`}>
                   <td className="px-6 py-4 whitespace-nowrap">
                     <code className="text-xs text-blue-600 font-mono">
                       {truncateHash(tx.traceId)}

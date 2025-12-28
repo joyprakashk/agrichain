@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import Card from '../components/Card';
-import { collection, collectionGroup, onSnapshot } from 'firebase/firestore';
+import { collection, collectionGroup, onSnapshot, getDocs, query, orderBy, updateDoc, serverTimestamp } from 'firebase/firestore';
 import { db } from '../../../../firebaseConfig';
 
 /**
@@ -89,13 +89,108 @@ const Dashboard = () => {
     let latestProduceSnap = null;
     let latestOrdersSnap = null;
 
-    const unsubF = onSnapshot(collection(db, 'farmers'), (s) => { console.log('[Dashboard] farmers snapshot:', s.size); latestFarmerSnap = s; makeActivities(latestFarmerSnap, latestProduceSnap, latestOrdersSnap); });
-    const unsubP = onSnapshot(collectionGroup(db, 'produce'), (s) => { console.log('[Dashboard] produce snapshot:', s.size); latestProduceSnap = s; makeActivities(latestFarmerSnap, latestProduceSnap, latestOrdersSnap); });
-    const unsubO = onSnapshot(collectionGroup(db, 'orders'), (s) => { console.log('[Dashboard] orders snapshot:', s.size); latestOrdersSnap = s; makeActivities(latestFarmerSnap, latestProduceSnap, latestOrdersSnap); });
+    let unsubF = null;
+    unsubF = onSnapshot(collection(db, 'farmers'), (s) => { console.log('[Dashboard] farmers snapshot:', s.size); latestFarmerSnap = s; makeActivities(latestFarmerSnap, latestProduceSnap, latestOrdersSnap); }, (err) => { console.error('[Dashboard] farmers snapshot error', err); if (typeof unsubF === 'function') try { unsubF(); } catch(e){} });
+
+    let unsubP = null;
+    unsubP = onSnapshot(collectionGroup(db, 'produce'), (s) => { console.log('[Dashboard] produce snapshot:', s.size); latestProduceSnap = s; makeActivities(latestFarmerSnap, latestProduceSnap, latestOrdersSnap); }, (err) => { console.error('[Dashboard] produce snapshot error', err); if (typeof unsubP === 'function') try { unsubP(); } catch(e){} });
+
+    let unsubO = null;
+    unsubO = onSnapshot(collectionGroup(db, 'orders'), (s) => { console.log('[Dashboard] orders snapshot:', s.size); latestOrdersSnap = s; makeActivities(latestFarmerSnap, latestProduceSnap, latestOrdersSnap); }, (err) => { console.error('[Dashboard] orders snapshot error', err); if (typeof unsubO === 'function') try { unsubO(); } catch(e){} });
 
     unsubscribers.push(unsubF, unsubP, unsubO);
 
     return () => unsubscribers.forEach(u => u && typeof u === 'function' && u());
+  }, []);
+
+  // Quick Actions handlers
+  useEffect(() => {
+    const onAddUser = () => {
+      // navigate to users route and focus
+      window.location.hash = '#/admin/users';
+      window.setTimeout(() => window.dispatchEvent(new CustomEvent('focus-users')), 200);
+    };
+
+    const fmtDate = (v) => {
+      if (!v) return '';
+      try {
+        if (typeof v.toDate === 'function') return v.toDate().toISOString();
+        if (v instanceof Date) return v.toISOString();
+        return String(v);
+      } catch (e) { return String(v); }
+    };
+
+    const onGenerateReport = async () => {
+      try {
+        const farmersSnap = await getDocs(collection(db, 'farmers'));
+        const farmers = farmersSnap.docs.map(d => ({ id: d.id, ...(d.data()||{}) }));
+
+        const produceSnap = await getDocs(collectionGroup(db, 'produce'));
+        const produce = produceSnap.docs.map(d => ({ id: d.id, ...(d.data()||{}), _refPath: d.ref.path }));
+
+        const ordersSnap = await getDocs(collectionGroup(db, 'orders'));
+        const orders = ordersSnap.docs.map(d => ({ id: d.id, ...(d.data()||{}) }));
+
+        const csvSections = [];
+        csvSections.push('Users');
+        csvSections.push('id,fullName,email,registeredAt');
+        farmers.forEach(f => csvSections.push(`${f.id},"${(f.fullName||'').replace(/"/g,'""')}",${f.email || ''},${fmtDate(f.registeredAt)}`));
+
+        csvSections.push('\nProduce');
+        csvSections.push('id,produceName,quantity,status,traceId,farmerPath,createdAt');
+        produce.forEach(p => csvSections.push(`${p.id},"${(p.produceName||'').replace(/"/g,'""')}",${p.quantity||''},${p.status||''},${p.traceId||''},"${p._refPath}","${fmtDate(p.createdAt)}"`));
+
+        csvSections.push('\nOrders');
+        csvSections.push('id,productName,farmerEmail,consumerEmail,status,traceId,createdAt');
+        orders.forEach(o => csvSections.push(`${o.id},"${(o.productName||'').replace(/"/g,'""')}",${o.farmerEmail||''},${o.consumerEmail||''},${o.status||''},${o.traceId||''},"${fmtDate(o.createdAt)}"`));
+
+        const csvContent = csvSections.join('\n');
+        const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = `agri-report-${Date.now()}.csv`;
+        a.click();
+        URL.revokeObjectURL(url);
+      } catch (err) {
+        console.error('Generate report failed', err);
+        alert('Failed to generate report');
+      }
+    };
+
+    const onVerifyBatch = async () => {
+      try {
+        const snap = await getDocs(collectionGroup(db, 'produce'));
+        const docs = snap.docs.map(d => ({ ref: d.ref, id: d.id, data: d.data() || {} }));
+        const unverified = docs.filter(d => !d.data.traceId);
+        if (unverified.length === 0) {
+          alert('No unverified produce found');
+          return;
+        }
+        // sort by createdAt desc
+        unverified.sort((a,b) => {
+          const da = a.data.createdAt && a.data.createdAt.toDate ? a.data.createdAt.toDate().getTime() : (a.data.createdAt ? new Date(a.data.createdAt).getTime() : 0);
+          const dbt = b.data.createdAt && b.data.createdAt.toDate ? b.data.createdAt.toDate().getTime() : (b.data.createdAt ? new Date(b.data.createdAt).getTime() : 0);
+          return dbt - da;
+        });
+        const target = unverified[0];
+        await updateDoc(target.ref, { status: 'verified', verifiedAt: serverTimestamp() });
+        alert('Latest unverified produce marked as verified');
+      } catch (err) {
+        console.error('Verify batch failed', err);
+        alert('Verification failed');
+      }
+    };
+
+    window.addEventListener('admin-action-add-user', onAddUser);
+    window.addEventListener('admin-action-generate-report', onGenerateReport);
+    window.addEventListener('admin-action-verify-batch', onVerifyBatch);
+
+    return () => {
+      window.removeEventListener('admin-action-add-user', onAddUser);
+      window.removeEventListener('admin-action-generate-report', onGenerateReport);
+      window.removeEventListener('admin-action-verify-batch', onVerifyBatch);
+    };
   }, []);
 
   return (
@@ -170,13 +265,13 @@ const Dashboard = () => {
         <div className="bg-white rounded-lg shadow-md p-6">
           <h2 className="text-xl font-bold text-gray-900 mb-4">Quick Actions</h2>
           <div className="space-y-3">
-            <button className="w-full px-4 py-3 bg-green-500 text-white rounded-lg hover:bg-green-600 transition-colors text-left">
+            <button onClick={() => window.dispatchEvent(new CustomEvent('admin-action-add-user'))} className="w-full px-4 py-3 bg-green-500 text-white rounded-lg hover:bg-green-600 transition-colors text-left">
               ➕ Add New User
             </button>
-            <button className="w-full px-4 py-3 bg-blue-500 text-white rounded-lg hover:bg-blue-600 transition-colors text-left">
+            <button onClick={() => window.dispatchEvent(new CustomEvent('admin-action-generate-report'))} className="w-full px-4 py-3 bg-blue-500 text-white rounded-lg hover:bg-blue-600 transition-colors text-left">
               📊 Generate Report
             </button>
-            <button className="w-full px-4 py-3 bg-purple-500 text-white rounded-lg hover:bg-purple-600 transition-colors text-left">
+            <button onClick={() => window.dispatchEvent(new CustomEvent('admin-action-verify-batch'))} className="w-full px-4 py-3 bg-purple-500 text-white rounded-lg hover:bg-purple-600 transition-colors text-left">
               🔍 Verify Batch
             </button>
           </div>

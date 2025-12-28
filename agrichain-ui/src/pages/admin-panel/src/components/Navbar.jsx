@@ -1,19 +1,10 @@
-import React, { useState } from 'react';
+import React from 'react';
 
 /**
  * Navbar Component
- * Top navigation bar with welcome message and search functionality
+ * Top navigation bar (search removed per requirements)
  */
 const Navbar = () => {
-  const [searchQuery, setSearchQuery] = useState('');
-
-  const handleSearch = (e) => {
-    e.preventDefault();
-    if (searchQuery.trim()) {
-      alert(`Search functionality will be implemented for: ${searchQuery}`);
-    }
-  };
-
   return (
     <nav className="bg-white shadow-md px-6 py-4">
       <div className="flex items-center justify-between">
@@ -30,19 +21,8 @@ const Navbar = () => {
           </p>
         </div>
 
-        {/* Search Bar */}
-        <form onSubmit={handleSearch} className="flex-1 max-w-md mx-8">
-          <div className="relative">
-            <input
-              type="text"
-              placeholder="Search users, transactions..."
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-              className="w-full px-4 py-2 pl-10 pr-4 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-green-500 focus:border-transparent"
-            />
-            <span className="absolute left-3 top-2.5 text-gray-400">🔍</span>
-          </div>
-        </form>
+        {/* Spacer to keep layout consistent */}
+        <div className="flex-1 mx-8" />
 
         {/* User Profile Section */}
         <div className="flex items-center space-x-4">
