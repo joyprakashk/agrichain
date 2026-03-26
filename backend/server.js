@@ -1,3 +1,4 @@
+// 🌾 server.js — AgriChain Backend (Farmer + Retailer + Consumer + Blockchain Integration)
 import express from "express";
 import cors from "cors";
 import admin from "firebase-admin";
@@ -175,7 +176,8 @@ app.get("/api/test", (req, res) => {
       farmerRegister: "/api/farmers/register",
       farmerLogin: "/api/verifyToken",
       allProduce: "/api/market/all-produce",
-      transferToRetailer: "/api/farmer/transfer-to-retailer"
+      transferToRetailer: "/api/farmer/transfer-to-retailer",
+      consumerPurchase: "/api/consumer/purchase-from-retailer"
     }
   });
 });
@@ -439,7 +441,7 @@ app.post("/api/farmer/update-packaged", async (req, res) => {
   }
 });
 
-// 🚚 Transfer produce to retailer (ADDED BETTER LOGGING)
+// 🚚 Transfer produce to retailer
 app.post("/api/farmer/transfer-to-retailer", async (req, res) => {
   try {
     console.log("📦 Transfer to retailer request received");
@@ -447,7 +449,6 @@ app.post("/api/farmer/transfer-to-retailer", async (req, res) => {
     
     const { email, produceId, retailerEmail, farmerPrivateKey } = req.body;
     
-    // Log each field for debugging
     console.log("Fields:", {
       email: email || "MISSING",
       produceId: produceId || "MISSING",
@@ -467,7 +468,6 @@ app.post("/api/farmer/transfer-to-retailer", async (req, res) => {
       });
     }
     
-    // Get retailer details
     const retailerRef = db.collection("retailers").doc(retailerEmail);
     const retailerDoc = await retailerRef.get();
     
@@ -487,7 +487,6 @@ app.post("/api/farmer/transfer-to-retailer", async (req, res) => {
     
     const produceData = produceDoc.data();
     
-    // Update Firestore
     await produceRef.update({
       retailerId: retailerEmail,
       retailerDetails: {
@@ -505,7 +504,6 @@ app.post("/api/farmer/transfer-to-retailer", async (req, res) => {
       }
     });
     
-    // Update retailer's received products count
     await retailerRef.update({
       totalProductsReceived: admin.firestore.FieldValue.increment(1)
     });
@@ -542,7 +540,6 @@ app.post("/api/retailer/register", async (req, res) => {
       return res.status(400).json({ message: "Retailer already registered" });
     }
     
-    // Register on blockchain
     let blockchainTx = null;
     let blockchainRetailerInfo = null;
     
@@ -581,7 +578,6 @@ app.post("/api/retailer/register", async (req, res) => {
     await retailerRef.set(retailerData);
     console.log("✅ Retailer saved to Firestore:", email);
     
-    // Remove password from response
     const { password: _, ...retailerResponse } = retailerData;
     
     res.status(200).json({ 
@@ -826,6 +822,125 @@ app.post("/api/retailer/list-produce", async (req, res) => {
   } catch (err) {
     console.error("❌ Error listing produce:", err);
     res.status(500).json({ message: "Failed to list produce" });
+  }
+});
+
+// ============================
+// 🛒 CONSUMER PURCHASE FROM RETAILER (FIXED)
+// ============================
+app.post("/api/consumer/purchase-from-retailer", async (req, res) => {
+  try {
+    console.log("🛒 Consumer purchase from retailer request received");
+    console.log("Request body:", req.body);
+    
+    const { consumerEmail, produceId, farmerEmail, retailerEmail, quantity, totalAmount } = req.body;
+    
+    if (!consumerEmail || !produceId || !farmerEmail || !retailerEmail) {
+      console.log("❌ Missing required fields");
+      return res.status(400).json({ 
+        message: "Missing required fields",
+        missing: {
+          consumerEmail: !consumerEmail,
+          produceId: !produceId,
+          farmerEmail: !farmerEmail,
+          retailerEmail: !retailerEmail
+        }
+      });
+    }
+    
+    // Get produce details
+    const produceRef = db.collection("farmers").doc(farmerEmail).collection("produce").doc(produceId);
+    const produceDoc = await produceRef.get();
+    
+    if (!produceDoc.exists) {
+      console.log("❌ Produce not found:", produceId);
+      return res.status(404).json({ message: "Produce not found" });
+    }
+    
+    const produceData = produceDoc.data();
+    
+    // Get farmer details to get farmer name
+    const farmerRef = db.collection("farmers").doc(farmerEmail);
+    const farmerDoc = await farmerRef.get();
+    const farmerName = farmerDoc.exists ? farmerDoc.data().fullName : "Unknown Farmer";
+    
+    // Get retailer details to get retailer name
+    const retailerRef = db.collection("retailers").doc(retailerEmail);
+    const retailerDoc = await retailerRef.get();
+    const retailerName = retailerDoc.exists ? retailerDoc.data().name : null;
+    
+    // Check if product is still available
+    if (!produceData.availableForPurchase) {
+      console.log("❌ Product no longer available:", produceId);
+      return res.status(400).json({ message: "Product is no longer available for purchase" });
+    }
+    
+    // Update produce status to purchased
+    await produceRef.update({
+      status: "purchased",
+      currentStage: "purchased",
+      availableForPurchase: false,
+      consumerEmail: consumerEmail,
+      purchasedAt: new Date().toISOString(),
+      "supplyChain.purchased": {
+        timestamp: new Date().toISOString(),
+        consumer: consumerEmail,
+        quantity: quantity,
+        totalAmount: totalAmount
+      }
+    });
+    
+    // Update retailer stats
+    if (retailerEmail) {
+      const retailerStatsRef = db.collection("retailers").doc(retailerEmail);
+      const retailerStatsDoc = await retailerStatsRef.get();
+      
+      if (retailerStatsDoc.exists) {
+        await retailerStatsRef.update({
+          totalProductsSold: admin.firestore.FieldValue.increment(1),
+          totalRevenue: admin.firestore.FieldValue.increment(totalAmount || 0)
+        });
+        console.log("✅ Retailer stats updated");
+      }
+    }
+    
+    // Create order record with safe values
+    const orderRef = db.collection("consumers").doc(consumerEmail).collection("orders").doc();
+    const orderData = {
+      orderId: orderRef.id,
+      productName: produceData.produceName || "Unknown Product",
+      quantity: quantity || 1,
+      unit: produceData.unit || 'kg',
+      totalAmount: totalAmount || 0,
+      farmerEmail: farmerEmail,
+      farmerName: farmerName,
+      retailerEmail: retailerEmail,
+      retailerName: retailerName || null,
+      produceId: produceId,
+      traceId: produceData.traceId || null,
+      status: "confirmed",
+      createdAt: new Date().toISOString(),
+      expectedDelivery: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString()
+    };
+    
+    // Remove any undefined values
+    Object.keys(orderData).forEach(key => {
+      if (orderData[key] === undefined) {
+        delete orderData[key];
+      }
+    });
+    
+    await orderRef.set(orderData);
+    console.log("✅ Order created:", orderRef.id);
+    
+    res.status(200).json({ 
+      message: "Purchase successful!", 
+      orderId: orderRef.id,
+      orderData: orderData
+    });
+  } catch (err) {
+    console.error("❌ Consumer purchase error:", err);
+    res.status(500).json({ message: "Failed to complete purchase", error: err.message });
   }
 });
 
@@ -1120,4 +1235,5 @@ httpServer.listen(PORT, '0.0.0.0', () => {
   console.log(`   POST /api/farmers/register - Register farmer`);
   console.log(`   POST /api/verifyToken - Farmer login`);
   console.log(`   POST /api/farmer/transfer-to-retailer - Transfer produce to retailer`);
+  console.log(`   POST /api/consumer/purchase-from-retailer - Consumer purchase from retailer`);
 });

@@ -1,11 +1,11 @@
-// src/pages/ProduceDetailsPage.jsx
 import React, { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { doc, getDoc } from "firebase/firestore";
 import { db } from "../firebaseConfig";
-import { ArrowLeft, Heart, Share2, Star, MapPin, Calendar, Package, Plus, Minus } from "lucide-react";
+import { ArrowLeft, Heart, Share2, Star, MapPin, Calendar, Package, Plus, Minus, CheckCircle, Store } from "lucide-react";
 import FarmerInfo from "../components/FarmerInfo";
 import SupplyChainJourney from "../components/SupplyChainJourney";
+import toast from "react-hot-toast";
 
 /**
  * Helper: read encoded Firestore path from hash
@@ -25,6 +25,7 @@ const readEncodedPathFromHash = () => {
 // Apply placeholders for missing data
 const applyPlaceholders = (rawDoc) => {
   return {
+    id: rawDoc.id,
     produceName: rawDoc.produceName || rawDoc.name || "Organic Tomatoes",
     price: rawDoc.price || 48,
     imageUrl: rawDoc.imageUrl || rawDoc.image || "/src/assets/tomato.png",
@@ -38,6 +39,13 @@ const applyPlaceholders = (rawDoc) => {
     rating: rawDoc.rating || 4.8,
     reviews: rawDoc.reviews || 156,
     farmerEmail: rawDoc.farmerEmail || rawDoc.email || "ramesh@example.com",
+    farmerId: rawDoc.farmerId || rawDoc.farmerEmail,
+    retailerId: rawDoc.retailerId || null,
+    retailerDetails: rawDoc.retailerDetails || null,
+    availableForPurchase: rawDoc.availableForPurchase || false,
+    currentStage: rawDoc.currentStage || "harvested",
+    traceId: rawDoc.traceId || null,
+    supplyChain: rawDoc.supplyChain || {},
     nutrition: rawDoc.nutrition || {
       calories: 18,
       protein: "0.9",
@@ -48,23 +56,7 @@ const applyPlaceholders = (rawDoc) => {
     storage: rawDoc.storage || {
       temperature: "12-15°C",
       humidity: "85-90% humidity"
-    },
-    supplyChain: rawDoc.supplyChain || [
-      {
-        step: "Harvest",
-        details: (rawDoc.farmerName || rawDoc.fullName || "Ramesh Kumar") + " Farm → Fresh Distributors",
-        temp: "25°C",
-        humidity: "65%",
-        status: "completed"
-      },
-      {
-        step: "Transport",
-        details: "Fresh Distributors → City Market",
-        temp: "15°C",
-        humidity: "85%",
-        status: "completed"
-      }
-    ]
+    }
   };
 };
 
@@ -73,6 +65,9 @@ const ProduceDetailsPage = () => {
   const [produce, setProduce] = useState(null);
   const [loading, setLoading] = useState(true);
   const [quantity, setQuantity] = useState(1);
+  const [processing, setProcessing] = useState(false);
+  const [showPurchaseSection, setShowPurchaseSection] = useState(false);
+  const [agreed, setAgreed] = useState(false);
   const encodedPath = readEncodedPathFromHash();
 
   useEffect(() => {
@@ -87,13 +82,13 @@ const ProduceDetailsPage = () => {
 
         const rawPath = encodedPath;
         const parts = rawPath.split("/").filter(Boolean);
+        const produceId = parts[parts.length - 1];
 
         // Try backend API first
         try {
           const response = await fetch('http://localhost:8080/api/market/all-produce');
           if (response.ok) {
             const result = await response.json();
-            const produceId = parts[parts.length - 1];
             const foundProduce = result.allProduce.find(p => p.id === produceId);
 
             if (foundProduce) {
@@ -131,7 +126,8 @@ const ProduceDetailsPage = () => {
           farmerName,
           farmLocation,
           id: snap.id,
-          farmerEmail: parts[farmerIndex + 1] || data.email
+          farmerEmail: parts[farmerIndex + 1] || data.email,
+          farmerId: parts[farmerIndex + 1] || data.email
         });
 
         setProduce(final);
@@ -146,31 +142,116 @@ const ProduceDetailsPage = () => {
     fetchDoc();
   }, [encodedPath]);
 
+  const handlePurchase = async () => {
+    if (!agreed) {
+      toast.error('Please agree to the terms');
+      return;
+    }
+
+    setProcessing(true);
+    try {
+      const consumerInfo = JSON.parse(localStorage.getItem('consumerInfo') || '{}');
+      const consumerEmail = consumerInfo.email || consumerInfo.phoneNumber;
+      
+      if (!consumerEmail) {
+        toast.error('Please login to continue');
+        navigate('/consumerloginpage');
+        return;
+      }
+
+      // Check if this product is from a retailer (has retailerId and is available for purchase)
+      const isFromRetailer = produce.retailerId && produce.availableForPurchase;
+      
+      let endpoint;
+      let requestBody;
+      
+      if (isFromRetailer) {
+        // Purchase from retailer
+        endpoint = 'http://localhost:8080/api/consumer/purchase-from-retailer';
+        const pricePerUnit = parseFloat(produce.retailerDetails?.priceAtRetail?.replace('₹', '').split('/')[0]) || produce.price;
+        
+        requestBody = {
+          consumerEmail: consumerEmail,
+          produceId: produce.id,
+          farmerEmail: produce.farmerId || produce.farmerEmail,
+          retailerEmail: produce.retailerId,
+          quantity: quantity,
+          totalAmount: pricePerUnit * quantity
+        };
+        
+        console.log("🛒 Purchasing from retailer:", requestBody);
+      } else {
+        // Purchase directly from farmer
+        endpoint = 'http://localhost:8080/api/orders/place';
+        requestBody = {
+          consumerEmail: consumerEmail,
+          productName: produce.produceName,
+          quantity: quantity,
+          totalAmount: quantity * produce.price,
+          farmerEmail: produce.farmerEmail,
+          orderData: {
+            produceId: produce.id,
+            harvestDate: produce.harvestDate,
+            sourceLocation: produce.farmLocation
+          }
+        };
+        
+        console.log("🛒 Purchasing from farmer:", requestBody);
+      }
+      
+      const response = await fetch(endpoint, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(requestBody)
+      });
+      
+      const data = await response.json();
+      console.log("📨 Purchase response:", data);
+      
+      if (response.ok) {
+        toast.success('Purchase successful!');
+        
+        // Store order details for success page
+        localStorage.setItem('lastOrderDetails', JSON.stringify({
+          orderId: data.orderId,
+          productName: produce.produceName,
+          quantity: quantity,
+          unit: 'kg',
+          totalAmount: isFromRetailer ? requestBody.totalAmount : quantity * produce.price,
+          farmerName: produce.farmerName,
+          retailerName: produce.retailerDetails?.name,
+          traceId: produce.traceId
+        }));
+        
+        navigate('/order-success');
+      } else {
+        toast.error(data.message || 'Purchase failed');
+      }
+    } catch (error) {
+      console.error('Purchase error:', error);
+      toast.error('Failed to complete purchase');
+    } finally {
+      setProcessing(false);
+      setShowPurchaseSection(false);
+      setAgreed(false);
+    }
+  };
+
   const handleBuyNow = () => {
     // Check if consumer is logged in
     const consumer = JSON.parse(localStorage.getItem('consumerInfo') || '{}');
     if (!consumer.email && !consumer.phoneNumber) {
-      alert('Please login to place order');
+      toast.error('Please login to place order');
       navigate('/consumerloginpage');
       return;
     }
 
-    const orderData = {
-      productName: produce.produceName,
-      quantity: quantity,
-      pricePerKg: produce.price,
-      subtotal: quantity * produce.price,
-      deliveryFee: 50,
-      totalAmount: (quantity * produce.price) + 50,
-      farmerEmail: produce.farmerEmail,
-      sourceLocation: produce.sourceLocation // Pass farmer location
-    };
-
-    navigate('/checkout', { state: { order: orderData } });
+    // Show purchase confirmation section
+    setShowPurchaseSection(true);
   };
 
   const handleAddToCart = () => {
-    alert('Added to cart!');
+    toast.success('Added to cart!');
   };
 
   if (loading) {
@@ -193,12 +274,19 @@ const ProduceDetailsPage = () => {
     );
   }
 
-  const totalPrice = quantity * produce.price;
+  const pricePerUnit = produce.retailerDetails?.priceAtRetail 
+    ? parseFloat(produce.retailerDetails.priceAtRetail.replace('₹', '').split('/')[0]) 
+    : produce.price;
+  const totalPrice = quantity * pricePerUnit;
+  const isSoldByRetailer = produce.retailerId && produce.availableForPurchase;
+  const sellerName = isSoldByRetailer ? produce.retailerDetails?.name : produce.farmerName;
+  const sellerType = isSoldByRetailer ? 'Retailer' : 'Farmer';
+  const displayPrice = isSoldByRetailer ? produce.retailerDetails?.priceAtRetail : `₹${produce.price}/kg`;
 
   return (
     <div className="min-h-screen bg-gray-50">
       {/* Header */}
-      <header className="bg-white shadow-sm">
+      <header className="bg-white shadow-sm sticky top-0 z-10">
         <div className="container max-w-6xl mx-auto px-4 py-4 flex items-center justify-between">
           <button
             onClick={() => navigate('/buyproduce')}
@@ -235,6 +323,11 @@ const ProduceDetailsPage = () => {
                 <p className="text-sm text-gray-600">
                   Complete blockchain traceability from farm to your table
                 </p>
+                {produce.traceId && (
+                  <p className="text-xs text-gray-500 font-mono mt-2 break-all">
+                    Trace ID: {produce.traceId.slice(0, 20)}...
+                  </p>
+                )}
               </div>
             </div>
 
@@ -243,6 +336,12 @@ const ProduceDetailsPage = () => {
               <div className="flex items-center gap-2 mb-2">
                 <span className="bg-black text-white text-xs px-2 py-1 rounded">Organic</span>
                 <span className="bg-green-100 text-green-800 text-xs px-2 py-1 rounded font-medium">A+</span>
+                {isSoldByRetailer && (
+                  <span className="bg-orange-100 text-orange-800 text-xs px-2 py-1 rounded font-medium flex items-center gap-1">
+                    <Store className="w-3 h-3" />
+                    Sold by Retailer
+                  </span>
+                )}
               </div>
 
               <h1 className="text-3xl font-bold text-gray-800 mb-2">{produce.produceName}</h1>
@@ -252,6 +351,10 @@ const ProduceDetailsPage = () => {
                   <Star className="w-4 h-4 text-yellow-400 fill-current" />
                   <span className="ml-1 font-semibold">{produce.rating}</span>
                   <span className="ml-1 text-gray-500">({produce.reviews} reviews)</span>
+                </div>
+                <div className="flex items-center text-sm text-gray-500">
+                  <Store className="w-4 h-4 mr-1" />
+                  <span>Sold by: {sellerName}</span>
                 </div>
               </div>
 
@@ -271,7 +374,9 @@ const ProduceDetailsPage = () => {
               </div>
 
               <div className="mb-6">
-                <div className="text-3xl font-bold text-green-600 mb-2">₹{produce.price}/kg</div>
+                <div className="text-3xl font-bold text-green-600 mb-2">
+                  {displayPrice}
+                </div>
 
                 <div className="mb-4">
                   <label className="block text-sm font-medium text-gray-700 mb-2">Quantity (kg)</label>
@@ -311,11 +416,73 @@ const ProduceDetailsPage = () => {
                   </button>
                 </div>
               </div>
+
+              {/* Purchase Confirmation Section */}
+              {showPurchaseSection && (
+                <div className="mt-4 p-4 bg-yellow-50 rounded-lg border border-yellow-200">
+                  <h3 className="font-semibold text-gray-800 mb-3">Confirm Purchase</h3>
+                  <div className="space-y-2 mb-3">
+                    <div className="flex justify-between text-sm">
+                      <span className="text-gray-600">Product:</span>
+                      <span className="font-medium">{produce.produceName}</span>
+                    </div>
+                    <div className="flex justify-between text-sm">
+                      <span className="text-gray-600">Quantity:</span>
+                      <span>{quantity} kg</span>
+                    </div>
+                    <div className="flex justify-between text-sm">
+                      <span className="text-gray-600">Total Amount:</span>
+                      <span className="font-bold text-green-600">₹{totalPrice}</span>
+                    </div>
+                    <div className="flex justify-between text-sm">
+                      <span className="text-gray-600">Seller:</span>
+                      <span>{sellerName} ({sellerType})</span>
+                    </div>
+                  </div>
+                  <label className="flex items-start gap-3 cursor-pointer mt-3">
+                    <input
+                      type="checkbox"
+                      checked={agreed}
+                      onChange={(e) => setAgreed(e.target.checked)}
+                      className="mt-1 w-4 h-4 text-green-600"
+                    />
+                    <span className="text-sm text-gray-600">
+                      I confirm that I have reviewed the product details and agree to purchase from the {sellerType.toLowerCase()}.
+                    </span>
+                  </label>
+                  <button
+                    onClick={handlePurchase}
+                    disabled={!agreed || processing}
+                    className="w-full mt-4 bg-green-600 text-white py-2 rounded-lg font-semibold hover:bg-green-700 transition disabled:opacity-50 disabled:cursor-not-allowed"
+                  >
+                    {processing ? (
+                      <span className="flex items-center justify-center gap-2">
+                        <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
+                        Processing...
+                      </span>
+                    ) : (
+                      <span className="flex items-center justify-center gap-2">
+                        <CheckCircle className="w-4 h-4" />
+                        Confirm Purchase
+                      </span>
+                    )}
+                  </button>
+                  <button
+                    onClick={() => {
+                      setShowPurchaseSection(false);
+                      setAgreed(false);
+                    }}
+                    className="w-full mt-2 bg-gray-200 text-gray-700 py-2 rounded-lg font-semibold hover:bg-gray-300 transition"
+                  >
+                    Cancel
+                  </button>
+                </div>
+              )}
             </div>
           </div>
         </div>
 
-        {/* All 4 Sections in One Page */}
+        {/* All Sections */}
         <div className="space-y-6">
           {/* Farmer Information & Nutrition */}
           <FarmerInfo
@@ -330,7 +497,8 @@ const ProduceDetailsPage = () => {
 
           {/* Supply Chain Journey */}
           <SupplyChainJourney
-            chain={produce.supplyChain}
+            chain={produce.supplyChain ? Object.values(produce.supplyChain).filter(event => event !== null) : []}
+            currentStage={produce.currentStage}
             farmer={{
               name: produce.farmerName,
               location: produce.farmLocation

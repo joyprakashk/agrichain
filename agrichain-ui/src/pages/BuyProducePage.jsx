@@ -1,4 +1,3 @@
-// src/pages/BuyProducePage.jsx
 import React, { useState, useEffect } from "react";
 import {
   ShoppingCart,
@@ -7,10 +6,11 @@ import {
   User,
   ArrowRight,
   LogIn,
+  Store
 } from "lucide-react";
 import ProductCard from "../components/ProductCard";
-// Removed direct Firestore usage - using backend API instead
 import { useNavigate } from "react-router-dom";
+import { ENDPOINTS } from "../config/api";
 
 const categoryIcons = {
   All: "🌟",
@@ -52,7 +52,7 @@ const BuyProducePage = () => {
     const storedConsumer = localStorage.getItem("consumerInfo");
     if (storedConsumer) {
       const consumerData = JSON.parse(storedConsumer);
-      console.log('Consumer data:', consumerData); // Debug log
+      console.log('Consumer data:', consumerData);
       setConsumer(consumerData);
     }
   }, []);
@@ -63,27 +63,39 @@ const BuyProducePage = () => {
     navigate("/consumerloginpage");
   };
 
-  // Use backend API instead of direct Firestore
+  // Fetch produce that is listed for sale by retailers
   useEffect(() => {
-    const fetchProduce = async () => {
+    const fetchRetailerListedProduce = async () => {
       setLoading(true);
       try {
-        const response = await fetch('http://localhost:8080/api/market/all-produce');
+        console.log("📡 Fetching retailer-listed produce...");
+        
+        // Use the available-produce endpoint which filters products that are available for purchase
+        // and have been listed by retailers
+        const response = await fetch(ENDPOINTS.AVAILABLE_PRODUCE);
+        
         if (response.ok) {
           const result = await response.json();
-          const allProduce = result.allProduce || [];
+          // The available-produce endpoint returns produce that is available for purchase
+          // (listed by retailers)
+          const retailerProduce = result.produce || [];
           
-          setProduceList(allProduce);
-          setFilteredList(allProduce);
+          console.log(`✅ Found ${retailerProduce.length} products listed by retailers`);
+          
+          setProduceList(retailerProduce);
+          setFilteredList(retailerProduce);
 
+          // Calculate category counts
           const counts = {
-            All: allProduce.length,
-            Vegetables: allProduce.filter((p) => p.category === "Vegetables").length,
-            Fruits: allProduce.filter((p) => p.category === "Fruits").length,
-            Grains: allProduce.filter((p) => p.category === "Grains").length,
-            "Organic Produce": allProduce.filter((p) => p.category === "Organic Produce").length,
+            All: retailerProduce.length,
+            Vegetables: retailerProduce.filter((p) => p.category === "Vegetables").length,
+            Fruits: retailerProduce.filter((p) => p.category === "Fruits").length,
+            Grains: retailerProduce.filter((p) => p.category === "Grains").length,
+            "Organic Produce": retailerProduce.filter((p) => p.category === "Organic Produce").length,
           };
           setCategoryCounts(counts);
+        } else {
+          console.error("Failed to fetch retailer-listed produce");
         }
       } catch (error) {
         console.error('Error fetching produce:', error);
@@ -92,7 +104,7 @@ const BuyProducePage = () => {
       }
     };
 
-    fetchProduce();
+    fetchRetailerListedProduce();
   }, []);
 
   useEffect(() => {
@@ -110,7 +122,20 @@ const BuyProducePage = () => {
 
   // When user clicks a product — we pass the product data
   const handleViewDetails = (product) => {
-    const docPath = `farmers/${product.farmerEmail}/produce/${product.id}`;
+    // For retailer-listed products, we need to pass the retailer info as well
+    const productData = {
+      ...product,
+      sellerType: 'retailer', // Indicates this is sold by a retailer
+      sellerId: product.retailerId,
+      sellerName: product.retailerDetails?.name || product.farmerName,
+      priceAtRetail: product.retailerDetails?.priceAtRetail || `₹${product.price}/kg`
+    };
+    
+    // Store product data in localStorage for the details page
+    localStorage.setItem('selectedProduct', JSON.stringify(productData));
+    
+    // Navigate to details page with product ID
+    const docPath = `farmers/${product.farmerId}/produce/${product.id}`;
     const encoded = encodeURIComponent(docPath);
     window.location.hash = `#/details/${encoded}`;
   };
@@ -176,7 +201,7 @@ const BuyProducePage = () => {
               <div className="flex flex-col items-center">
                 <ShoppingCart className="w-8 h-8 mb-2 group-hover:scale-110 transition-transform duration-200" />
                 <span className="text-lg">Buy Produce</span>
-                <span className="text-xs opacity-80 mt-1">Fresh from Farms</span>
+                <span className="text-xs opacity-80 mt-1">Fresh from Retailers</span>
               </div>
             </a>
             <a href="#/consumer-dashboard" className="group flex items-center justify-center p-6 bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-200 font-semibold rounded-2xl shadow-lg hover:shadow-xl transition-all duration-200 transform hover:-translate-y-1 border border-gray-200 dark:border-gray-600">
@@ -188,6 +213,21 @@ const BuyProducePage = () => {
             </a>
           </div>
 
+          {/* Retailer Info Banner */}
+          <div className="mb-6 p-4 bg-orange-50 dark:bg-orange-900/20 rounded-xl border border-orange-200 dark:border-orange-800">
+            <div className="flex items-center gap-3">
+              <Store className="w-6 h-6 text-orange-600" />
+              <div>
+                <p className="text-sm font-medium text-orange-800 dark:text-orange-300">
+                  Shop from Trusted Retailers
+                </p>
+                <p className="text-xs text-orange-600 dark:text-orange-400">
+                  All products listed here are from verified retailers who source directly from farmers
+                </p>
+              </div>
+            </div>
+          </div>
+
           <div className="mb-8">
             <h2 className="text-2xl font-bold text-gray-800 dark:text-white mb-6 flex items-center">
               <span className="mr-3">🏷️</span>
@@ -195,7 +235,13 @@ const BuyProducePage = () => {
             </h2>
             <div className="flex space-x-4 overflow-x-auto pb-4 scrollbar-hide">
               {categories.map((cat) => (
-                <CategoryButton key={cat} name={cat} count={categoryCounts[cat]} isActive={activeCategory === cat} onClick={() => setActiveCategory(cat)} />
+                <CategoryButton 
+                  key={cat} 
+                  name={cat} 
+                  count={categoryCounts[cat]} 
+                  isActive={activeCategory === cat} 
+                  onClick={() => setActiveCategory(cat)} 
+                />
               ))}
             </div>
           </div>
@@ -204,7 +250,7 @@ const BuyProducePage = () => {
             <div className="flex justify-between items-center mb-6">
               <h2 className="text-2xl font-bold text-gray-800 dark:text-white flex items-center">
                 <span className="mr-3">🛒</span>
-                Available Produce
+                Available from Retailers
               </h2>
               <div className="flex items-center gap-2">
                 <span className="bg-green-100 dark:bg-green-900 text-green-800 dark:text-green-200 px-3 py-1 rounded-full text-sm font-semibold">
@@ -221,8 +267,8 @@ const BuyProducePage = () => {
             ) : filteredList.length === 0 ? (
               <div className="flex flex-col items-center justify-center py-12">
                 <div className="text-6xl mb-4">😭</div>
-                <p className="text-gray-500 dark:text-gray-400 font-medium text-lg mb-2">No produce found</p>
-                <p className="text-gray-400 dark:text-gray-500 text-sm">Try adjusting your search or category filter</p>
+                <p className="text-gray-500 dark:text-gray-400 font-medium text-lg mb-2">No produce available</p>
+                <p className="text-gray-400 dark:text-gray-500 text-sm">Check back later for fresh produce from retailers</p>
               </div>
             ) : (
               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
@@ -231,11 +277,12 @@ const BuyProducePage = () => {
                     key={index}
                     imageSrc={product.imageUrl || "/default-produce.png"}
                     title={product.produceName}
-                    location={product.farmerName || "Unknown Farmer"}
-                    price={`₹${product.price || "N/A"}/kg`}
+                    location={`${product.retailerDetails?.name || product.farmerName} (Retailer)`}
+                    price={product.retailerDetails?.priceAtRetail || `₹${product.price}/kg`}
                     rating={4.5}
-                    reviews={(product.quantity || "0") + " kg available"}
+                    reviews={`${product.quantity || "0"} kg available`}
                     onViewDetails={() => handleViewDetails(product)}
+                    retailer={true}
                   />
                 ))}
               </div>
