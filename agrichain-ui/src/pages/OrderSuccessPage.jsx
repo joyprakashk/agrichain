@@ -1,10 +1,13 @@
-// src/pages/OrderSuccessPage.jsx
 import React, { useState, useEffect } from 'react';
-import { CheckCircle, QrCode, Home, Package, ArrowLeft, Truck, Clock, MapPin } from 'lucide-react';
+import { CheckCircle, QrCode, Home, Package, ArrowLeft, Truck, Clock, MapPin, Eye } from 'lucide-react';
+import SupplyChainJourney from '../components/SupplyChainJourney';
 
 const OrderSuccessPage = () => {
   const [orderDetails, setOrderDetails] = useState(null);
   const [qrModal, setQrModal] = useState({ show: false, qrCode: null, traceId: null });
+  const [showSupplyChain, setShowSupplyChain] = useState(false);
+  const [supplyChainData, setSupplyChainData] = useState(null);
+  const [loadingSupplyChain, setLoadingSupplyChain] = useState(false);
 
   useEffect(() => {
     // Get order details from localStorage or state
@@ -42,6 +45,84 @@ const OrderSuccessPage = () => {
   const handleVerifyOnline = () => {
     if (qrModal.traceId) {
       window.location.hash = `#/verify/${qrModal.traceId}`;
+    }
+  };
+
+  const handleTrackOrder = async () => {
+    if (!orderDetails?.traceId) {
+      alert('Trace ID not available for this order');
+      return;
+    }
+    
+    setLoadingSupplyChain(true);
+    setShowSupplyChain(true);
+    
+    try {
+      // Fetch supply chain data from trace endpoint
+      const response = await fetch(`http://localhost:8080/api/trace/${orderDetails.traceId}`);
+      const data = await response.json();
+      
+      if (response.ok) {
+        // Transform the data for SupplyChainJourney component
+        const supplyChainEvents = [];
+        
+        // Extract supply chain events from the data
+        if (data.supplyChain) {
+          Object.keys(data.supplyChain).forEach(stage => {
+            if (data.supplyChain[stage] && data.supplyChain[stage].timestamp) {
+              supplyChainEvents.push({
+                stage: stage,
+                timestamp: data.supplyChain[stage].timestamp,
+                status: 'completed'
+              });
+            }
+          });
+        }
+        
+        // If we have blockchain events, use those
+        if (data.blockchainEvents && data.blockchainEvents.length > 0) {
+          setSupplyChainData({
+            chain: data.blockchainEvents,
+            currentStage: data.currentStage || 'harvested',
+            farmer: {
+              name: data.farmer,
+              location: data.farmLocation || 'Farm Location'
+            }
+          });
+        } else {
+          setSupplyChainData({
+            chain: supplyChainEvents,
+            currentStage: data.currentStage || 'harvested',
+            farmer: {
+              name: data.farmer,
+              location: data.farmLocation || 'Farm Location'
+            }
+          });
+        }
+      } else {
+        // If trace not found, create demo supply chain
+        setSupplyChainData({
+          chain: ['harvested', 'packaged', 'inTransitToRetailer'],
+          currentStage: 'inTransitToRetailer',
+          farmer: {
+            name: orderDetails.farmerName || 'Local Farmer',
+            location: orderDetails.farmerLocation || 'Farm Location'
+          }
+        });
+      }
+    } catch (error) {
+      console.error('Error fetching supply chain:', error);
+      // Create demo data for display
+      setSupplyChainData({
+        chain: ['harvested', 'packaged'],
+        currentStage: 'packaged',
+        farmer: {
+          name: orderDetails.farmerName || 'Local Farmer',
+          location: orderDetails.farmerLocation || 'Farm Location'
+        }
+      });
+    } finally {
+      setLoadingSupplyChain(false);
     }
   };
 
@@ -110,7 +191,7 @@ const OrderSuccessPage = () => {
                   <h3 className="font-medium text-blue-800 dark:text-blue-300 mb-2">
                     Blockchain Verification
                   </h3>
-                  <p className="text-xs text-blue-600 dark:text-blue-400 font-mono mb-3">
+                  <p className="text-xs text-blue-600 dark:text-blue-400 font-mono mb-3 break-all">
                     Trace ID: {orderDetails.traceId}
                   </p>
                   <button 
@@ -166,58 +247,89 @@ const OrderSuccessPage = () => {
                 className="flex-1 p-3 border border-gray-300 dark:border-gray-600 rounded-lg bg-gray-50 dark:bg-gray-600 text-gray-800 dark:text-white"
                 placeholder="Order ID"
               />
-              <button className="px-4 py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition">
+              <button 
+                onClick={handleTrackOrder}
+                className="px-4 py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition flex items-center gap-2"
+              >
+                <Eye className="w-4 h-4" />
                 Track
               </button>
             </div>
           </div>
 
-          {/* Progress Timeline */}
-          <div className="space-y-4">
-            <div className="flex items-center">
-              <div className="w-8 h-8 bg-green-600 rounded-full flex items-center justify-center mr-4">
-                <CheckCircle className="w-5 h-5 text-white" />
+          {/* Progress Timeline - Basic */}
+          {!showSupplyChain && (
+            <div className="space-y-4">
+              <div className="flex items-center">
+                <div className="w-8 h-8 bg-green-600 rounded-full flex items-center justify-center mr-4">
+                  <CheckCircle className="w-5 h-5 text-white" />
+                </div>
+                <div className="flex-1">
+                  <p className="font-semibold text-gray-800 dark:text-white">Order Placed</p>
+                  <p className="text-sm text-gray-500 dark:text-gray-400">Your order has been confirmed</p>
+                </div>
+                <span className="text-sm text-gray-500 dark:text-gray-400">Just now</span>
               </div>
-              <div className="flex-1">
-                <p className="font-semibold text-gray-800 dark:text-white">Order Placed</p>
-                <p className="text-sm text-gray-500 dark:text-gray-400">Your order has been confirmed</p>
+              
+              <div className="flex items-center">
+                <div className="w-8 h-8 bg-gray-300 dark:bg-gray-600 rounded-full flex items-center justify-center mr-4">
+                  <Package className="w-5 h-5 text-gray-500" />
+                </div>
+                <div className="flex-1">
+                  <p className="font-semibold text-gray-500 dark:text-gray-400">Processing</p>
+                  <p className="text-sm text-gray-500 dark:text-gray-400">Farmer is preparing your order</p>
+                </div>
+                <span className="text-sm text-gray-500 dark:text-gray-400">Pending</span>
               </div>
-              <span className="text-sm text-gray-500 dark:text-gray-400">Just now</span>
+              
+              <div className="flex items-center">
+                <div className="w-8 h-8 bg-gray-300 dark:bg-gray-600 rounded-full flex items-center justify-center mr-4">
+                  <Truck className="w-5 h-5 text-gray-500" />
+                </div>
+                <div className="flex-1">
+                  <p className="font-semibold text-gray-500 dark:text-gray-400">Out for Delivery</p>
+                  <p className="text-sm text-gray-500 dark:text-gray-400">Your order is on the way</p>
+                </div>
+                <span className="text-sm text-gray-500 dark:text-gray-400">Pending</span>
+              </div>
+              
+              <div className="flex items-center">
+                <div className="w-8 h-8 bg-gray-300 dark:bg-gray-600 rounded-full flex items-center justify-center mr-4">
+                  <MapPin className="w-5 h-5 text-gray-500" />
+                </div>
+                <div className="flex-1">
+                  <p className="font-semibold text-gray-500 dark:text-gray-400">Delivered</p>
+                  <p className="text-sm text-gray-500 dark:text-gray-400">Order delivered successfully</p>
+                </div>
+                <span className="text-sm text-gray-500 dark:text-gray-400">Pending</span>
+              </div>
             </div>
-            
-            <div className="flex items-center">
-              <div className="w-8 h-8 bg-gray-300 dark:bg-gray-600 rounded-full flex items-center justify-center mr-4">
-                <Package className="w-5 h-5 text-gray-500" />
-              </div>
-              <div className="flex-1">
-                <p className="font-semibold text-gray-500 dark:text-gray-400">Processing</p>
-                <p className="text-sm text-gray-500 dark:text-gray-400">Farmer is preparing your order</p>
-              </div>
-              <span className="text-sm text-gray-500 dark:text-gray-400">Pending</span>
+          )}
+
+          {/* Detailed Supply Chain Journey */}
+          {showSupplyChain && (
+            <div>
+              {loadingSupplyChain ? (
+                <div className="text-center py-8">
+                  <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-green-500 mx-auto mb-4"></div>
+                  <p className="text-gray-500">Loading supply chain details...</p>
+                </div>
+              ) : supplyChainData && (
+                <SupplyChainJourney 
+                  chain={supplyChainData.chain || []}
+                  currentStage={supplyChainData.currentStage || 'harvested'}
+                  farmer={supplyChainData.farmer}
+                />
+              )}
+              <button
+                onClick={() => setShowSupplyChain(false)}
+                className="mt-4 text-blue-600 hover:text-blue-700 text-sm flex items-center gap-1"
+              >
+                <ArrowLeft className="w-4 h-4" />
+                Back to basic tracking
+              </button>
             </div>
-            
-            <div className="flex items-center">
-              <div className="w-8 h-8 bg-gray-300 dark:bg-gray-600 rounded-full flex items-center justify-center mr-4">
-                <Truck className="w-5 h-5 text-gray-500" />
-              </div>
-              <div className="flex-1">
-                <p className="font-semibold text-gray-500 dark:text-gray-400">Out for Delivery</p>
-                <p className="text-sm text-gray-500 dark:text-gray-400">Your order is on the way</p>
-              </div>
-              <span className="text-sm text-gray-500 dark:text-gray-400">Pending</span>
-            </div>
-            
-            <div className="flex items-center">
-              <div className="w-8 h-8 bg-gray-300 dark:bg-gray-600 rounded-full flex items-center justify-center mr-4">
-                <MapPin className="w-5 h-5 text-gray-500" />
-              </div>
-              <div className="flex-1">
-                <p className="font-semibold text-gray-500 dark:text-gray-400">Delivered</p>
-                <p className="text-sm text-gray-500 dark:text-gray-400">Order delivered successfully</p>
-              </div>
-              <span className="text-sm text-gray-500 dark:text-gray-400">Pending</span>
-            </div>
-          </div>
+          )}
         </div>
 
         <div className="flex flex-col sm:flex-row gap-4">
