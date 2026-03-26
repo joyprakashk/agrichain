@@ -15,8 +15,23 @@ import QRCode from "qrcode";
 import { createServer } from "http";
 import { Server } from "socket.io";
 import adminRoutes from './routes/adminRoutes.js';
+import os from 'os'; // Add this for getting local IP
 
 dotenv.config();
+
+// Helper function to get local IP address
+function getLocalIp() {
+  const interfaces = os.networkInterfaces();
+  for (const name of Object.keys(interfaces)) {
+    for (const net of interfaces[name]) {
+      // Skip internal and non-IPv4 addresses
+      if (net.family === 'IPv4' && !net.internal) {
+        return net.address;
+      }
+    }
+  }
+  return '0.0.0.0';
+}
 
 // Initialize blockchain service
 let blockchainService = null;
@@ -131,7 +146,9 @@ app.post("/api/upload", upload.single("image"), (req, res) => {
     if (!req.file) return res.status(400).json({ message: "No image uploaded" });
 
     const PORT = process.env.PORT || 8080;
-    const imageUrl = `http://localhost:${PORT}/uploads/${req.file.filename}`;
+    // Get the local IP to use in image URL
+    const localIp = getLocalIp();
+    const imageUrl = `http://${localIp}:${PORT}/uploads/${req.file.filename}`;
     res.status(200).json({ imageUrl });
   } catch (err) {
     console.error("❌ Upload error:", err);
@@ -334,8 +351,8 @@ app.post("/api/consumer/register", async (req, res) => {
     const consumerData = {
       fullName: fullName || "",
       userType: userType || "",
-      location: location || "", // check if this is text
-      coordinates: coordinates || null, // { lat: ..., lng: ... }
+      location: location || "",
+      coordinates: coordinates || null,
       language: language || "",
       phoneNumber: phoneNumber || "",
       email: email || "",
@@ -525,7 +542,7 @@ app.get("/api/trace/:traceId", async (req, res) => {
         let farmerName = "Unknown Farmer";
         if (orderData.farmerEmail) {
           const farmerDoc = await db.collection("farmers").doc(orderData.farmerEmail).get();
-          if (farmerDoc.exists()) {
+          if (farmerDoc.exists) {
             farmerName = farmerDoc.data().fullName || orderData.farmerEmail;
           }
         }
@@ -766,9 +783,15 @@ io.on("connection", (socket) => {
 });
 
 // ============================
-// 🚀 Start Server
+// 🚀 Start Server (UPDATED to listen on all network interfaces)
 // ============================
 const PORT = process.env.PORT || 8080;
-httpServer.listen(PORT, () =>
-  console.log(`🚀 Server running on http://localhost:${PORT}`)
-);
+const localIp = getLocalIp();
+
+httpServer.listen(PORT, '0.0.0.0', () => {
+  console.log(`\n🚀 Server is running!`);
+  console.log(`📡 Local:   http://localhost:${PORT}`);
+  console.log(`📡 Network: http://${localIp}:${PORT}`);
+  console.log(`\n📱 Make sure your phone is on the same Wi-Fi network`);
+  console.log(`🔗 Use the Network URL above to connect from your phone\n`);
+});

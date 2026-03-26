@@ -419,12 +419,12 @@ const ConsumerLoginPage = () => {
                 <label className="flex items-center p-3 border border-gray-300 dark:border-gray-600 rounded-lg bg-gray-50 dark:bg-gray-700">
                   <input
                     type="radio"
-                    value="Retailer"
-                    checked={userType === "Retailer"}
+                    value="Consumer"
+                    checked={userType === "Consumer"}
                     onChange={(e) => setUserType(e.target.value)}
                     className="mr-3 text-green-600 focus:ring-green-500"
                   />
-                  <span className="text-gray-800 dark:text-white font-medium">Retailer</span>
+                  <span className="text-gray-800 dark:text-white font-medium">Consumer</span>
                 </label>
               </div>
 

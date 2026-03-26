@@ -1,175 +1,289 @@
+// src/pages/QrScannerPage.jsx
 import React, { useState } from 'react';
-import { QrCode, Search, CheckCircle, AlertCircle } from 'lucide-react';
+import { QrCode, Search, CheckCircle, Smartphone, AlertTriangle } from 'lucide-react';
 
-const QRScanner = () => {
-  const [traceId, setTraceId] = useState('');
-  const [verificationResult, setVerificationResult] = useState(null);
+const getReachableOrigin = () => {
+  const { hostname, protocol, port } = window.location;
+  if (hostname !== 'localhost' && hostname !== '127.0.0.1') {
+    return window.location.origin;
+  }
+  const lanIp = process.env.REACT_APP_LAN_IP;
+  if (lanIp) return `${protocol}//${lanIp}${port ? ':' + port : ''}`;
+  return null;
+};
+
+const InfoCard = ({ icon: Icon, title, description, iconColor = 'text-green-600' }) => (
+  <div className="bg-white p-6 rounded-xl shadow-md border border-gray-100 flex space-x-4">
+    <div className={`flex-shrink-0 w-12 h-12 flex items-center justify-center rounded-full bg-green-50 ${iconColor}`}>
+      <Icon className="w-6 h-6" />
+    </div>
+    <div>
+      <h3 className="text-lg font-semibold text-gray-800 mb-1">{title}</h3>
+      <p className="text-sm text-gray-600">{description}</p>
+    </div>
+  </div>
+);
+
+const QrScannerPage = () => {
+  const [batchId, setBatchId] = useState('');
+  const [qrCodes, setQrCodes] = useState([]);
   const [loading, setLoading] = useState(false);
 
-  // Check URL parameters for trace ID
+  const reachableOrigin = getReachableOrigin();
+
   React.useEffect(() => {
-    const urlParams = new URLSearchParams(window.location.hash.split('?')[1]);
-    const traceParam = urlParams.get('trace');
-    if (traceParam) {
-      setTraceId(traceParam);
-      // Auto-verify if trace ID is provided
-      handleVerifyTrace({ preventDefault: () => {} }, traceParam);
-    }
+    const fetchQRCodes = async () => {
+      try {
+        const response = await fetch('http://localhost:8080/api/qr-codes');
+        if (response.ok) {
+          const result = await response.json();
+          const codes  = result.qrCodes || [];
+          if (codes.length === 0) {
+            await loadTestQR();
+          } else {
+            setQrCodes(codes);
+          }
+        } else {
+          await loadTestQR();
+        }
+      } catch {
+        await loadTestQR();
+      }
+    };
+
+    const loadTestQR = async () => {
+      try {
+        const testResponse = await fetch('http://localhost:8080/api/test/qr');
+        if (testResponse.ok) {
+          const testResult = await testResponse.json();
+          setQrCodes([{
+            id:          'test-1',
+            produceName: 'Test Organic Tomatoes',
+            farmerName:  'Test Farmer',
+            farmLocation:'Nashik, Maharashtra',
+            certifications: 'Organic Certified',
+            quantity:    '50',
+            unit:        'kg',
+            traceId:     testResult.traceId,
+            qrCode:      testResult.qrCode,
+            harvestDate: '2024-01-15',
+            createdAt:   new Date().toISOString(),
+          }]);
+        }
+      } catch (err) {
+        console.error('Error generating test QR:', err);
+      }
+    };
+
+    fetchQRCodes();
   }, []);
 
-  const handleVerifyTrace = async (e, providedTraceId = null) => {
-    e.preventDefault();
-    const currentTraceId = providedTraceId || traceId;
-    if (!currentTraceId.trim()) return;
-
-    setLoading(true);
-    try {
-      // Check if it's the demo hash
-      if (currentTraceId.trim() === '0x1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef') {
-        setVerificationResult({
-          success: true,
-          data: {
-            traceId: currentTraceId.trim(),
-            farmer: '0x742d35Cc6634C0532925a3b8D4C9db96590645d8',
-            productName: 'Demo Organic Tomatoes',
-            quantity: '5',
-            timestamp: Date.now().toString(),
-            status: 'delivered',
-            verified: true
-          }
-        });
-        setLoading(false);
-        return;
-      }
-
-      const response = await fetch(`http://localhost:8080/api/trace/${currentTraceId.trim()}`);
-      const result = await response.json();
-      
-      if (response.ok) {
-        setVerificationResult({
-          success: true,
-          data: result
-        });
-      } else {
-        setVerificationResult({
-          success: false,
-          message: result.message || 'Verification failed'
-        });
-      }
-    } catch (error) {
-      setVerificationResult({
-        success: false,
-        message: 'Network error - please try again'
-      });
-    } finally {
-      setLoading(false);
-    }
+  const buildVerifyUrl = (traceId) => {
+    const base = reachableOrigin
+      ? reachableOrigin + window.location.pathname
+      : window.location.origin + window.location.pathname;
+    return `${base}#/verify/${encodeURIComponent(traceId)}`;
   };
 
+  const handleSearch = (e) => {
+    e.preventDefault();
+    if (!batchId.trim()) return;
+    window.location.href = `#/verify/${encodeURIComponent(batchId.trim())}`;
+  };
+
+  const handleVerifyQR = (traceId) => {
+    window.location.href = `#/verify/${encodeURIComponent(traceId)}`;
+  };
+
+  const sampleBatches = [
+    { id: 'BATCH001', name: 'Organic Tomatoes'    },
+    { id: 'BATCH002', name: 'Fresh Spinach'       },
+    { id: 'BATCH003', name: 'Premium Basmati Rice' },
+  ];
+
   return (
-    <div className="max-w-2xl mx-auto p-6">
-      <div className="text-center mb-8">
-        <QrCode className="w-16 h-16 mx-auto text-green-600 mb-4" />
-        <h2 className="text-2xl font-bold text-gray-800 dark:text-white mb-2">
-          Verify Blockchain Trace
-        </h2>
-        <p className="text-gray-600 dark:text-gray-400">
-          Enter the blockchain hash from QR code to verify produce authenticity
-        </p>
-      </div>
+    <div className="min-h-screen bg-gray-50">
+      <main className="container mx-auto px-4 flex flex-col items-center justify-start pt-8 pb-20">
 
-      <form onSubmit={handleVerifyTrace} className="mb-8">
-        <div className="flex gap-4">
-          <input
-            type="text"
-            placeholder="Enter blockchain hash (0x...)"
-            value={traceId}
-            onChange={(e) => setTraceId(e.target.value)}
-            className="flex-1 px-4 py-3 border border-gray-300 rounded-lg focus:ring-green-500 focus:border-green-500 dark:bg-gray-700 dark:border-gray-600 dark:text-white"
-          />
-          <button
-            type="submit"
-            disabled={loading || !traceId.trim()}
-            className="px-6 py-3 bg-green-600 text-white font-semibold rounded-lg hover:bg-green-700 transition disabled:opacity-50 flex items-center"
-          >
-            <Search className="w-5 h-5 mr-2" />
-            {loading ? 'Verifying...' : 'Verify'}
-          </button>
+        {/* Header */}
+        <div className="text-center max-w-2xl mx-auto mb-8">
+          <h1 className="text-4xl font-bold text-gray-900 mb-2">Consumer Portal</h1>
+          <p className="text-lg text-gray-600">
+            Trace your food's journey from farm to fork. Scan QR codes or search batch IDs to
+            verify authenticity and view complete supply chain history.
+          </p>
         </div>
-        
-        <div className="mt-4 p-4 bg-blue-50 dark:bg-blue-900/30 border border-blue-200 dark:border-blue-700 rounded-lg">
-          <h4 className="text-sm font-semibold text-blue-800 dark:text-blue-300 mb-2">Sample Test Hash:</h4>
-          <button 
-            onClick={() => setTraceId('0x1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef')}
-            className="text-xs font-mono text-blue-600 dark:text-blue-400 hover:text-blue-800 dark:hover:text-blue-200 cursor-pointer"
-          >
-            0x1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef
-          </button>
-          <p className="text-xs text-gray-600 dark:text-gray-400 mt-1">Click to test verification (will show demo data for testing)</p>
-        </div>
-        
-        <div className="text-center mt-6">
-          <a 
-            href="#/qr-codes" 
-            className="inline-flex items-center px-4 py-2 bg-blue-600 text-white font-semibold rounded-lg hover:bg-blue-700 transition"
-          >
-            <QrCode className="w-4 h-4 mr-2" />
-            View All QR Codes
-          </a>
-        </div>
-      </form>
 
-      {verificationResult && (
-        <div className={`p-6 rounded-xl border ${
-          verificationResult.success 
-            ? 'bg-green-50 border-green-200 dark:bg-green-900/20 dark:border-green-800' 
-            : 'bg-red-50 border-red-200 dark:bg-red-900/20 dark:border-red-800'
-        }`}>
-          <div className="flex items-center mb-4">
-            {verificationResult.success ? (
-              <CheckCircle className="w-6 h-6 text-green-600 mr-2" />
-            ) : (
-              <AlertCircle className="w-6 h-6 text-red-600 mr-2" />
-            )}
-            <h3 className={`text-lg font-semibold ${
-              verificationResult.success ? 'text-green-800 dark:text-green-300' : 'text-red-800 dark:text-red-300'
-            }`}>
-              {verificationResult.success ? 'Verification Successful' : 'Verification Failed'}
-            </h3>
+        {/* LAN IP warning */}
+        {!reachableOrigin && (
+          <div className="w-full max-w-2xl mb-6 flex items-start gap-3 p-4 bg-yellow-50 border border-yellow-300 rounded-xl text-left">
+            <AlertTriangle className="w-5 h-5 text-yellow-600 flex-shrink-0 mt-0.5" />
+            <div className="text-sm text-yellow-800">
+              <p className="font-semibold mb-1">Phones can't open <code>localhost</code> QR codes</p>
+              <p>
+                Add your computer's LAN IP to <code>.env</code>:<br />
+                <code className="bg-yellow-100 px-1 rounded">REACT_APP_LAN_IP=192.168.x.x</code>
+                <br />Then restart the dev server so QR codes encode a URL your phone can reach.
+              </p>
+            </div>
           </div>
+        )}
 
-          {verificationResult.success ? (
-            <div className="space-y-3 text-sm">
-              <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <span className="font-medium text-gray-700 dark:text-gray-300">Product:</span>
-                  <p className="text-gray-900 dark:text-white">{verificationResult.data.productName}</p>
+        {/* Tracking card */}
+        <div className="w-full max-w-5xl mb-16">
+          <div className="bg-white p-8 rounded-xl shadow-xl border border-gray-100">
+            <h2 className="text-xl font-semibold text-gray-700 flex items-center mb-6">
+              <QrCode className="w-6 h-6 mr-2 text-green-600" /> Track Your Produce
+            </h2>
+
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+              {/* Left: QR Scan Area */}
+              <div className="flex flex-col justify-between">
+                <div className="border-2 border-dashed border-blue-300 p-8 rounded-lg text-center bg-blue-50/50 relative">
+                  <Smartphone className="w-16 h-16 mx-auto text-blue-500 mb-4" />
+                  <p className="font-semibold text-blue-600 mb-1">Scan QR Code</p>
+                  <p className="text-sm text-gray-500">
+                    Point your camera at the QR code on the produce packaging.
+                    It will open the full verification page automatically — including farmer name,
+                    location, certifications, and supply chain status.
+                  </p>
+                  <div className="absolute top-0 left-0 right-0 bottom-0 pointer-events-none">
+                    <div className="border-4 border-dashed border-blue-500 rounded-lg absolute inset-4" />
+                  </div>
                 </div>
-                <div>
-                  <span className="font-medium text-gray-700 dark:text-gray-300">Quantity:</span>
-                  <p className="text-gray-900 dark:text-white">{verificationResult.data.quantity} kg</p>
-                </div>
-                <div>
-                  <span className="font-medium text-gray-700 dark:text-gray-300">Status:</span>
-                  <p className="text-gray-900 dark:text-white capitalize">{verificationResult.data.status}</p>
-                </div>
-                <div>
-                  <span className="font-medium text-gray-700 dark:text-gray-300">Farmer:</span>
-                  <p className="text-gray-900 dark:text-white font-mono text-xs">{verificationResult.data.farmer}</p>
-                </div>
+                <button
+                  className="w-full bg-blue-600 hover:bg-blue-700 text-white mt-6 py-3 text-lg font-semibold rounded-lg transition duration-300 flex items-center justify-center gap-2"
+                  onClick={() => (window.location.href = '#/verify')}
+                >
+                  <Smartphone className="w-6 h-6" /> Start QR Scanner
+                </button>
               </div>
-              <div>
-                <span className="font-medium text-gray-700 dark:text-gray-300">Blockchain Hash:</span>
-                <p className="text-gray-900 dark:text-white font-mono text-xs break-all">{verificationResult.data.traceId}</p>
+
+              {/* Right: Manual Search */}
+              <div className="flex flex-col">
+                <h3 className="text-lg font-semibold text-gray-700 mb-4 flex items-center">
+                  <Search className="w-5 h-5 mr-2" /> Manual Search
+                </h3>
+                <form onSubmit={handleSearch} className="flex flex-col">
+                  <input
+                    type="text"
+                    placeholder="Enter Batch ID or blockchain hash…"
+                    value={batchId}
+                    onChange={(e) => setBatchId(e.target.value)}
+                    className="w-full px-4 py-3 border border-gray-300 rounded-lg mb-4 focus:ring-green-500 focus:border-green-500"
+                  />
+                  <button
+                    type="submit"
+                    disabled={loading || !batchId.trim()}
+                    className="w-full px-4 py-3 bg-green-600 text-white font-medium rounded-lg hover:bg-green-700 transition disabled:opacity-50 flex items-center justify-center gap-2"
+                  >
+                    <Search className="w-5 h-5" />
+                    {loading ? 'Searching…' : 'Search & Verify'}
+                  </button>
+                </form>
+
+                <div className="mt-6 p-4 bg-gray-50 rounded-lg border border-gray-200 flex-grow">
+                  <h4 className="text-sm font-medium text-gray-700 mb-3">Sample Batch IDs to try:</h4>
+                  <ul className="text-sm space-y-1">
+                    {sampleBatches.map((batch) => (
+                      <li key={batch.id}>
+                        <button
+                          onClick={() => handleVerifyQR(batch.id)}
+                          className="text-blue-600 hover:text-blue-800 transition font-semibold"
+                        >
+                          {batch.id} – {batch.name}
+                        </button>
+                      </li>
+                    ))}
+                  </ul>
+                </div>
               </div>
             </div>
-          ) : (
-            <p className="text-red-700 dark:text-red-300">{verificationResult.message}</p>
-          )}
+          </div>
         </div>
-      )}
+
+        {/* Available QR Codes */}
+        {qrCodes.length > 0 && (
+          <div className="w-full max-w-5xl mx-auto mb-16">
+            <div className="text-center mb-8">
+              <h2 className="text-2xl font-bold text-gray-800 mb-2">Available QR Codes to Scan</h2>
+              <p className="text-gray-600">
+                Click "View Full Details" to see all farmer &amp; product information
+              </p>
+            </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+              {qrCodes.map((item, index) => {
+                const verifyUrl = buildVerifyUrl(item.traceId);
+                const qrSrc    = reachableOrigin
+                  ? `https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=${encodeURIComponent(verifyUrl)}`
+                  : item.qrCode;
+
+                return (
+                  <div key={index} className="bg-white rounded-xl shadow-lg p-6 border border-gray-100">
+                    <div className="text-center mb-4">
+                      {qrSrc ? (
+                        <img
+                          src={qrSrc}
+                          alt={`QR Code for ${item.produceName}`}
+                          className="mx-auto border rounded-lg w-48 h-48"
+                        />
+                      ) : (
+                        <div className="mx-auto w-48 h-48 bg-gray-100 rounded-lg flex items-center justify-center">
+                          <p className="text-xs text-gray-400 text-center px-2">Set REACT_APP_LAN_IP to generate scannable QR</p>
+                        </div>
+                      )}
+                      <p className="text-xs text-gray-400 mt-1">Scan → opens full details</p>
+                    </div>
+
+                    <div className="space-y-1">
+                      <h3 className="text-lg font-semibold text-gray-800">{item.produceName}</h3>
+                      <p className="text-sm text-gray-600">👨‍🌾 Farmer: {item.farmerName}</p>
+                      {item.farmLocation && (
+                        <p className="text-sm text-gray-600">📍 {item.farmLocation}</p>
+                      )}
+                      {item.certifications && (
+                        <p className="text-sm text-gray-600">🌿 {item.certifications}</p>
+                      )}
+                      {item.quantity && (
+                        <p className="text-sm text-gray-600">📦 {item.quantity} {item.unit || 'kg'}</p>
+                      )}
+                      <p className="text-sm text-gray-600">🗓 Harvest: {item.harvestDate}</p>
+
+                      <div className="mt-4 text-center">
+                        <button
+                          onClick={() => handleVerifyQR(item.traceId)}
+                          className="text-sm bg-green-600 text-white px-4 py-2 rounded-lg hover:bg-green-700 transition"
+                        >
+                          View Full Details →
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        )}
+
+        {/* Info Cards */}
+        <div className="w-full grid grid-cols-1 md:grid-cols-2 gap-8 max-w-4xl mx-auto">
+          <InfoCard
+            icon={QrCode}
+            title="How to Find QR Codes"
+            description="Look for QR codes on produce packaging, labels, or stickers. Scanning opens a full verification page with all farmer and product details."
+            iconColor="text-blue-600"
+          />
+          <InfoCard
+            icon={CheckCircle}
+            title="Why Trace Your Food?"
+            description="Food traceability helps ensure safety, authenticity, and sustainability. Know exactly where your food comes from and how it was handled."
+            iconColor="text-green-600"
+          />
+        </div>
+      </main>
     </div>
   );
 };
 
-export default QRScanner;
+export default QrScannerPage;
